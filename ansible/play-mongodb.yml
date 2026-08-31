@@ -1,0 +1,62 @@
+---
+# 세션 2 · MongoDB 운영
+#
+#
+#   ansible -m ping all
+#   ansible-playbook play-mongodb.yml
+#
+# ── 챕터 06 에서 복제를 켤 때 ────────────────────────────────
+#   ansible-playbook play-mongodb.yml -e mongodb_replset_enabled=true
+#
+# ── 챕터 10 에서 인증을 켤 때 ────────────────────────────────
+#   1차  ansible-playbook play-mongodb.yml -e mongodb_replset_enabled=true \
+#          -e mongodb_auth_enabled=true -e mongodb_transition_to_auth=true
+#   2차  ansible-playbook play-mongodb.yml -e mongodb_replset_enabled=true \
+#          -e mongodb_auth_enabled=true
+#
+#   두 번 도는 이유는 인증이 켜진 노드와 꺼진 노드가 섞이면 하트비트가
+#   깨지기 때문이다. transitionToAuth 가 그 구간을 건너게 한다.
+
+- name: OS 튜닝과 디스크 마운트
+  hosts: mongo
+  become: true
+  vars:
+    data_mount_path: /var/lib/mongodb
+  roles:
+    - common
+
+# serial: 1 이 없으면 세 노드를 동시에 재시작해 과반을 잃는다.
+# 복제를 켠 뒤로는 그 순간 Replica Set 이 통째로 멈춘다.
+- name: MongoDB 설치와 설정
+  hosts: mongo
+  become: true
+  serial: 1
+  vars:
+    mongodb_target: server
+  roles:
+    - mongodb
+
+# 이 세션의 모든 명령이 ops 노드에서 나간다. mongosh 가 없으면 첫 실습부터 막힌다.
+- name: ops 노드 클라이언트 도구
+  hosts: ops
+  become: true
+  vars:
+    mongodb_target: client
+  roles:
+    - mongodb
+
+- name: exporter 설치
+  hosts: mongo
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+      monitoring_service: mongodb
+
+- name: 관측 스택 기동
+  hosts: ops
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: server
+      monitoring_service: mongodb

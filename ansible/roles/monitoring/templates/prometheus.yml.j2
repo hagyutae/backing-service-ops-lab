@@ -1,24 +1,42 @@
 # ops 노드에서만 돈다. 서비스 노드의 exporter 를 긁어 온다.
+#
+# 인벤토리에 있는 그룹만 job 으로 낸다. 세션마다 인벤토리가 다르므로
+# 없는 그룹을 순회하면 그 자리에서 플레이북이 멈춘다.
 
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
 
 scrape_configs:
+{% set svc_group = 'redis' if 'redis' in groups else ('mongo' if 'mongo' in groups else none) %}
+{% set svc_name = 'redis' if 'redis' in groups else 'mongodb' %}
+{% set svc_port = 9121 if 'redis' in groups else 9216 %}
+{% if svc_group %}
   - job_name: node
     static_configs:
       - targets:
-{% for host in groups['redis'] %}
+{% for host in groups[svc_group] %}
           - "{{ hostvars[host].ansible_host }}:9100"
 {% endfor %}
-        labels:
-          service: redis
-
-  - job_name: redis
-    static_configs:
-      - targets:
-{% for host in groups['redis'] %}
-          - "{{ hostvars[host].ansible_host }}:9121"
+{% for extra in ['configsvr', 'shard2'] if extra in groups %}
+{% for host in groups[extra] %}
+          - "{{ hostvars[host].ansible_host }}:9100"
+{% endfor %}
 {% endfor %}
         labels:
-          service: redis
+          service: {{ svc_name }}
+
+  - job_name: {{ svc_name }}
+    static_configs:
+      - targets:
+{% for host in groups[svc_group] %}
+          - "{{ hostvars[host].ansible_host }}:{{ svc_port }}"
+{% endfor %}
+{% for extra in ['configsvr', 'shard2'] if extra in groups %}
+{% for host in groups[extra] %}
+          - "{{ hostvars[host].ansible_host }}:{{ svc_port }}"
+{% endfor %}
+{% endfor %}
+        labels:
+          service: {{ svc_name }}
+{% endif %}

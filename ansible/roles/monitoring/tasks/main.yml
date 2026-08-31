@@ -2,24 +2,83 @@
 # monitoring_target 으로 두 가지를 나눈다.
 #   node   : 서비스 노드에 exporter 를 깐다
 #   server : ops 노드에 Prometheus 와 Grafana 를 올린다
+#
+# monitoring_service 로 어느 서비스인지 나눈다.
+#   redis   : 세션 1. 기본값이라 play-redis.yml 은 값을 주지 않아도 된다
+#   mongodb : 세션 2
+#
+# node_exporter 는 서비스와 무관하게 공통이다. 서비스별 exporter 만 갈린다.
 
-- name: exporter 설치
+- name: node exporter 설치
   when: monitoring_target == "node"
   ansible.builtin.package:
-    name:
-      - prometheus-node-exporter
-      - prometheus-redis-exporter
+    name: prometheus-node-exporter
     state: present
 
-- name: exporter 기동
+- name: node exporter 기동
   when: monitoring_target == "node"
   ansible.builtin.systemd:
-    name: "{{ item }}"
+    name: prometheus-node-exporter
     enabled: true
     state: started
-  loop:
-    - prometheus-node-exporter
-    - prometheus-redis-exporter
+
+# ── Redis ────────────────────────────────────────────────────
+- name: redis exporter 설치
+  when: monitoring_target == "node" and monitoring_service == "redis"
+  ansible.builtin.package:
+    name: prometheus-redis-exporter
+    state: present
+
+- name: redis exporter 기동
+  when: monitoring_target == "node" and monitoring_service == "redis"
+  ansible.builtin.systemd:
+    name: prometheus-redis-exporter
+    enabled: true
+    state: started
+
+# ── MongoDB ──────────────────────────────────────────────────
+# Ubuntu 저장소에 패키지가 없다. Percona 가 배포하는 바이너리를 내려받는다.
+- name: mongodb exporter 내려받기
+  when: monitoring_target == "node" and monitoring_service == "mongodb"
+  ansible.builtin.unarchive:
+    src: "https://github.com/percona/mongodb_exporter/releases/download/v{{ mongodb_exporter_version }}/mongodb_exporter-{{ mongodb_exporter_version }}.linux-amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts: [--strip-components=1, --wildcards, "*/mongodb_exporter"]
+    creates: /usr/local/bin/mongodb_exporter
+    mode: "0755"
+
+# 접속 문자열을 변수로 받는다. 챕터 10 에서 인증을 켜기 전까지는 계정이 비어 있고,
+# 켠 뒤에는 clusterMonitor 계정을 넣어 다시 돌린다.
+- name: mongodb exporter 유닛
+  when: monitoring_target == "node" and monitoring_service == "mongodb"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/mongodb-exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=MongoDB Exporter
+      After=network-online.target mongod.service
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/mongodb_exporter \
+        --mongodb.uri={{ mongodb_exporter_uri }} \
+        --web.listen-address=:9216 \
+        --collect-all
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart mongodb exporter
+
+- name: mongodb exporter 기동
+  when: monitoring_target == "node" and monitoring_service == "mongodb"
+  ansible.builtin.systemd:
+    name: mongodb-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
 
 # Ubuntu 24.04 저장소에는 grafana 패키지가 없다. 공식 저장소를 등록한다.
 - name: Grafana 저장소 키
@@ -81,11 +140,13 @@
     - { src: dashboards.yaml.j2, dest: /etc/grafana/provisioning/dashboards/lab.yaml }
   notify: restart grafana
 
+# 서비스에 맞는 대시보드만 올린다. 다른 서비스 것을 함께 올리면
+# 지표가 없는 패널이 빈 채로 남아 수강생이 장애로 오해한다.
 - name: 실습 대시보드 배포
   when: monitoring_target == "server"
   ansible.builtin.copy:
-    src: redis-lab.json
-    dest: /var/lib/grafana/dashboards/redis-lab.json
+    src: "{{ monitoring_service }}-lab.json"
+    dest: "/var/lib/grafana/dashboards/{{ monitoring_service }}-lab.json"
     owner: grafana
     group: grafana
     mode: "0644"

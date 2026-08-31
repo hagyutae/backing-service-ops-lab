@@ -1,0 +1,7 @@
+---
+# 한 대씩 재시작한다. 세 멤버를 동시에 내리면 과반을 잃어 Replica Set 이 멈춘다.
+# serial: 1 은 play-mongodb.yml 쪽에서 준다.
+- name: mongod 재시작
+  ansible.builtin.systemd:
+    name: mongod
+    state: restarted

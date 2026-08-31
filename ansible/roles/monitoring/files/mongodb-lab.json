@@ -1,0 +1,206 @@
+{
+  "title": "MongoDB 실습",
+  "uid": "mongodb-lab",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "노드 CPU 사용률",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 2,
+      "title": "노드 메모리 사용량",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 3,
+      "title": "MongoDB 연결 수",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "mongodb_ss_connections{conn_type=\"current\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 4,
+      "title": "WiredTiger 캐시 사용량",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "mongodb_ss_wt_cache_bytes_currently_in_the_cache",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 5,
+      "title": "WiredTiger dirty 바이트",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "mongodb_ss_wt_cache_tracked_dirty_bytes_in_the_cache",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 6,
+      "title": "복제 지연",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "(max by (rs_nm) (mongodb_members_optimeDate{rs_state=\"1\", member_state=\"PRIMARY\"} > 0)\n  - on(rs_nm) group_right()\nmax by (rs_nm, member_idx) (mongodb_members_optimeDate{rs_state=\"1\"} > 0)) / 1000",
+          "legendFormat": "{{member_idx}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    }
+  ],
+  "description": "세션 2 실습용. 노드 자원과 MongoDB 기본 지표만 담는다. 임계값과 지표 조합은 2일차 세션에서 다룬다."
+}

@@ -1,0 +1,10 @@
+---
+# 어느 서비스를 관측하는가. 세션 1 은 값을 주지 않으므로 기본이 redis 다.
+monitoring_service: redis
+
+# Percona 가 배포하는 mongodb_exporter. Ubuntu 저장소에 패키지가 없어 바이너리를 쓴다.
+mongodb_exporter_version: "0.43.1"
+
+# 인증을 켜기 전에는 계정 없이 붙는다. 챕터 10 에서 clusterMonitor 계정을 넣어 다시 돌린다.
+#   -e mongodb_exporter_uri=mongodb://exporter:...@127.0.0.1:27017/?authSource=admin
+mongodb_exporter_uri: "mongodb://127.0.0.1:27017"

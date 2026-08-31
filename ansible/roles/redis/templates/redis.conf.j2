@@ -35,7 +35,7 @@ maxmemory 8gb
 # 실습 시작값. 이후 실습에서 noeviction 과 allkeys-lru 를 번갈아 적용
 maxmemory-policy allkeys-lru
 
-# LRU 표본 수. 늘리면 정확해지고 CPU 사용 증가
+# LRU 표본 수. 늘리면 선택이 정확해지는 대신 CPU 사용 증가
 maxmemory-samples 5
 
 ################################ 지속성 · RDB ################################

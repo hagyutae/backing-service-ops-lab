@@ -1,0 +1,61 @@
+{#
+  참·거짓 변수에는 반드시 | bool 을 붙인다.
+
+  인벤토리(INI)와 -e 는 값을 문자열로 넘긴다. Jinja 에서 "false" 는 비어 있지 않은
+  문자열이라 참이다. | bool 이 없으면 mongodb_replset_enabled=false 를 줘도
+  replSetName 이 들어가고, 그 노드는 rs.initiate() 전까지 사용자 데이터베이스에
+  쓰기도 조회도 받지 않는다. 챕터 03 과 05 의 확인 실습이 통째로 막힌다.
+
+  1회차 검증에서 실제로 이 상태였다. mongodb_cluster_role 은 문자열 변수라
+  | bool 을 붙이지 않는다.
+#}
+# {{ ansible_managed }}
+# 세션 2 · MongoDB 운영
+#
+# replication 과 security 는 처음부터 들어 있지 않다. 개념을 다루는 챕터에서
+# 변수를 켜서 더한다. 챕터 06 이 복제를, 챕터 10 이 인증을 넣는다.
+
+storage:
+  dbPath: {{ mongodb_dbpath }}
+
+systemLog:
+  destination: file
+  path: {{ mongodb_logpath }}
+  logAppend: true
+
+net:
+  # 기본값 127.0.0.1 은 그 노드 안에서만 접속을 받는다. ops 노드에서
+  # mongosh --host 로 붙는 구조라 사설 IP 를 함께 연다. 공인 IP 가 없고
+  # 네트워크 보안 그룹이 서브넷 안만 허용하므로 두 겹으로 막힌다.
+  bindIp: 127.0.0.1,{{ ansible_host }}
+
+  # clusterRole 을 주면 기본 포트가 바뀐다. 27017 로 고정한다.
+  port: {{ mongodb_port }}
+
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+{% if mongodb_replset_enabled | bool %}
+
+# 챕터 06 에서 켠다. 이 설정이 들어간 뒤에는 rs.initiate() 를 해야
+# 사용자 데이터베이스에 접근할 수 있다.
+replication:
+  replSetName: {{ mongodb_replset_name }}
+{% endif %}
+{% if mongodb_cluster_role %}
+
+# 챕터 12 Sharding 실습에서만 켠다.
+sharding:
+  clusterRole: {{ mongodb_cluster_role }}
+{% endif %}
+{% if mongodb_auth_enabled | bool %}
+
+# 챕터 10 에서 켠다. keyFile 은 authorization 을 함께 켠다.
+# 관리자 계정을 먼저 만들지 않으면 아무도 접속하지 못한다.
+security:
+  keyFile: {{ mongodb_keyfile_path }}
+{% if mongodb_transition_to_auth | bool %}
+  # 롤링 재시작 1차에서만 켠다. 인증이 켜진 노드와 꺼진 노드가 섞이는
+  # 구간을 건너게 한다. 2차 롤링에서 이 줄을 뺀다.
+  transitionToAuth: true
+{% endif %}
+{% endif %}

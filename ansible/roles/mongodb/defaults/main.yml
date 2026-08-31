@@ -1,0 +1,58 @@
+---
+# MongoDB 8.3.x. 패치 번호를 박지 않는다. apt 저장소가 8.3 계열의 최신을 준다.
+mongodb_major: "8.3"
+
+# 저장소 서명 키의 번호는 저장소 번호와 다르다.
+#
+# MongoDB 는 키를 LTS 메이저에만 낸다. 확인해 보면 6.0·7.0·8.0 은 있고
+# 7.1·7.2·7.3·8.1·8.2·8.3 은 전부 404 다. rapid release 는 직전 LTS 의 키로
+# 서명한다. mongodb_major 를 그대로 키 주소에 넣으면 첫 태스크에서 404 로 막힌다.
+#
+# 8.x 대의 LTS 는 8.0 이다. 9.0 이 나오면 이 값을 함께 올린다.
+mongodb_key_series: "8.0"
+
+mongodb_port: 27017
+mongodb_dbpath: /var/lib/mongodb
+mongodb_logpath: /var/log/mongodb/mongod.log
+
+# 복제 설정을 mongod.conf 에 넣을지 정한다.
+#
+# 챕터 02 구성 단계에서는 false 로 둔다. replSetName 이 들어간 mongod 는
+# rs.initiate() 전까지 사용자 데이터베이스에 쓰기도 조회도 받지 않는데,
+# 챕터 03 과 05 의 확인 실습이 그보다 앞에 오기 때문이다.
+#
+# 챕터 06 에서 이렇게 켠다.
+#   ansible-playbook play-mongodb.yml -e mongodb_replset_enabled=true
+mongodb_replset_enabled: false
+mongodb_replset_name: rs0
+
+# 인증을 mongod.conf 에 넣을지 정한다. 챕터 10 에서 켠다.
+#
+# security.keyFile 은 security.authorization 을 함께 켠다. 이 값을 true 로
+# 두는 순간 모든 연결이 자격 증명을 요구하므로, 관리자 계정을 먼저 만들어야 한다.
+mongodb_auth_enabled: false
+mongodb_keyfile_path: /etc/mongod.key
+
+# 인증을 켜는 롤링 재시작 1차에서만 true 로 둔다.
+# 인증이 켜진 노드와 꺼진 노드가 섞이는 구간을 건너게 한다.
+mongodb_transition_to_auth: false
+
+# Sharding 실습에서만 쓴다. shardsvr 또는 configsvr 를 준다.
+#
+# clusterRole 을 주면 기본 포트가 바뀐다. shardsvr 는 27018, configsvr 는
+# 27019 다. mongod.conf 에 net.port 를 명시해 27017 로 고정한다. 그러지
+# 않으면 인벤토리와 sh.addShard 의 주소가 어긋난다.
+mongodb_cluster_role: ""
+
+# ops 노드에 까는 클라이언트 도구.
+# 이 세션의 모든 명령이 ops 노드에서 나가므로 없으면 첫 실습부터 막힌다.
+# mongodb-database-tools 에 mongosh 는 들어 있지 않다. 따로 깐다.
+#
+# mongodb-org-mongos 는 챕터 12 에서 쓴다. 챕터 12 절차가 ops 노드에서
+# mongos 를 띄우라고 하는데, 1회차 검증에서 이 패키지를 깔지 않아 그 자리에서
+# 막혔다. 챕터 12 에만 필요하지만 여기서 함께 깐다. 용량이 작고, 나중에
+# 깔면 저장소 등록부터 다시 해야 한다.
+mongodb_ops_packages:
+  - mongodb-mongosh
+  - mongodb-database-tools
+  - mongodb-org-mongos
