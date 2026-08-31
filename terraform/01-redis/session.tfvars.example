@@ -1,0 +1,24 @@
+# 세션 1 · Redis 운영 스택의 변수 예시.
+#
+# ── 쓰는 방법 ────────────────────────────────────────────────
+#   cd lab/terraform/01-redis
+#   cp session.tfvars.example session.tfvars
+#   terraform apply -var-file=session.tfvars
+#
+# session.tfvars 는 .gitignore 대상이다. 값을 저장소에 올리지 않는다.
+#
+# ── 값을 얻는 곳 ─────────────────────────────────────────────
+#   구독 ID : az account show --query id -o tsv
+#   그룹    : rkm-<전달받은 계정 이름>-rg
+#             세션마다 끝이 다르다. 세션 1 은 -rg, 세션 2 는 -mongo-rg 다.
+#             20명이 한 구독을 공유하므로 이름이 겹치면 안 되고,
+#             세션끼리도 겹치지 않아야 자원 정리가 남의 것을 지우지 않는다
+#   공인 IP : curl -s ifconfig.me
+#   SSH 키  : ssh-keygen -t rsa -b 4096 -f ~/.ssh/rkm -C rkm
+#             Azure 는 RSA 2048비트 이상과 ED25519 를 받는다. 이 과정은 RSA 4096 으로 통일
+
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+resource_group_name = "rkm-student07-rg"
+location            = "koreacentral"
+allowed_cidrs       = ["203.0.113.10/32"]
+ssh_public_key_path = "~/.ssh/rkm.pub"

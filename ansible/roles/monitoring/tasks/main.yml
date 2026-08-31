@@ -1,0 +1,110 @@
+---
+# monitoring_target 으로 두 가지를 나눈다.
+#   node   : 서비스 노드에 exporter 를 깐다
+#   server : ops 노드에 Prometheus 와 Grafana 를 올린다
+
+- name: exporter 설치
+  when: monitoring_target == "node"
+  ansible.builtin.package:
+    name:
+      - prometheus-node-exporter
+      - prometheus-redis-exporter
+    state: present
+
+- name: exporter 기동
+  when: monitoring_target == "node"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - prometheus-node-exporter
+    - prometheus-redis-exporter
+
+# Ubuntu 24.04 저장소에는 grafana 패키지가 없다. 공식 저장소를 등록한다.
+- name: Grafana 저장소 키
+  when: monitoring_target == "server"
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    mode: "0644"
+
+# 미러가 동기화 중이면 인덱스 크기가 맞지 않아 실패한다.
+# 실제로 검증 중에 겪었다. 상류 사정이라 우리가 막을 수는 없고, 잠시 뒤 풀린다.
+# 20명이 같은 시각에 같은 미러를 때리는 구성이라 재시도를 넉넉히 둔다.
+- name: Grafana 저장소 등록
+  when: monitoring_target == "server"
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+    update_cache: true
+  register: grafana_repo
+  retries: 6
+  delay: 20
+  until: grafana_repo is succeeded
+
+# redis-tools 에 redis-cli 와 redis-benchmark 가 들어 있다.
+# 서버는 깔지 않는다. ops 노드는 부하를 주는 쪽이지 받는 쪽이 아니다.
+- name: Prometheus 와 Grafana, Redis 클라이언트 설치
+  when: monitoring_target == "server"
+  ansible.builtin.package:
+    name:
+      - prometheus
+      - grafana
+      - redis-tools
+    state: present
+
+- name: Grafana 프로비저닝 디렉터리
+  when: monitoring_target == "server"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+    - /var/lib/grafana/dashboards
+
+- name: Grafana 데이터소스와 대시보드 공급자
+  when: monitoring_target == "server"
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  loop:
+    - { src: datasource.yaml.j2, dest: /etc/grafana/provisioning/datasources/prometheus.yaml }
+    - { src: dashboards.yaml.j2, dest: /etc/grafana/provisioning/dashboards/lab.yaml }
+  notify: restart grafana
+
+- name: 실습 대시보드 배포
+  when: monitoring_target == "server"
+  ansible.builtin.copy:
+    src: redis-lab.json
+    dest: /var/lib/grafana/dashboards/redis-lab.json
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: prometheus.yml 배포
+  when: monitoring_target == "server"
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    mode: "0644"
+  notify: restart prometheus
+
+- name: 관측 스택 기동
+  when: monitoring_target == "server"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - prometheus
+    - grafana-server

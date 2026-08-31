@@ -1,0 +1,24 @@
+# ops 노드에서만 돈다. 서비스 노드의 exporter 를 긁어 온다.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets:
+{% for host in groups['redis'] %}
+          - "{{ hostvars[host].ansible_host }}:9100"
+{% endfor %}
+        labels:
+          service: redis
+
+  - job_name: redis
+    static_configs:
+      - targets:
+{% for host in groups['redis'] %}
+          - "{{ hostvars[host].ansible_host }}:9121"
+{% endfor %}
+        labels:
+          service: redis

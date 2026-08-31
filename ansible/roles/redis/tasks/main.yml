@@ -1,0 +1,43 @@
+---
+# 배포판 패키지는 7.0.15 다. 이 과정이 다루는 8.10.x 를 쓰려면
+# Redis 공식 저장소를 등록해야 한다.
+- name: Redis 저장소 키
+  ansible.builtin.get_url:
+    url: https://packages.redis.io/gpg
+    dest: /usr/share/keyrings/redis-archive-keyring.asc
+    mode: "0644"
+
+- name: Redis 저장소 등록
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.asc] https://packages.redis.io/deb {{ ansible_distribution_release }} main"
+    filename: redis
+    state: present
+    update_cache: true
+
+- name: Redis 설치
+  ansible.builtin.package:
+    name: redis
+    state: present
+
+- name: 데이터 디렉터리 소유권
+  ansible.builtin.file:
+    path: /var/lib/redis
+    owner: redis
+    group: redis
+    mode: "0750"
+    state: directory
+
+- name: redis.conf 배포
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: /etc/redis/redis.conf
+    owner: redis
+    group: redis
+    mode: "0640"
+  notify: restart redis
+
+- name: Redis 기동
+  ansible.builtin.systemd:
+    name: redis-server
+    enabled: true
+    state: started

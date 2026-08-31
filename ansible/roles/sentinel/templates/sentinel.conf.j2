@@ -1,0 +1,32 @@
+# 세션 1 · Redis 운영
+# Sentinel 은 이 파일을 스스로 갱신. 기동 뒤 내용이 달라져 있으면 정상
+
+port {{ sentinel_port }}
+bind {{ ansible_default_ipv4.address }} 127.0.0.1
+protected-mode no
+
+# redis-sentinel.service 도 Type=notify 다. redis.conf 와 같은 이유로 필요하다.
+supervised systemd
+
+dir /var/lib/redis-sentinel
+logfile /var/log/redis/sentinel.log
+
+################################ 감시 대상 ################################
+
+# 마지막 숫자가 quorum
+# quorum: master 가 정지했다고 합의할 최소 Sentinel 수
+# 이 구성은 Sentinel 3대이므로 2 로 설정
+sentinel monitor mymaster {{ redis_master_host }} {{ redis_port }} {{ sentinel_quorum }}
+
+################################ 타이밍 ################################
+
+# 응답이 없는 채로 이 시간이 지나면 SDOWN 으로 판정
+# 짧으면 일시적 지연을 장애로 오인, 길면 실제 장애를 늦게 감지
+sentinel down-after-milliseconds mymaster 5000
+
+# 전환을 다시 시도하기까지 기다리는 시간
+sentinel failover-timeout mymaster 60000
+
+# 새 master 에 동시에 재동기화할 replica 수
+# 크게 잡으면 전환은 빨라지지만 그 순간 새 master 에 full resync 가 몰림
+sentinel parallel-syncs mymaster 1

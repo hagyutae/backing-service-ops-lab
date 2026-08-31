@@ -1,0 +1,38 @@
+---
+# 세션 1 · Redis 운영
+#
+#
+#   ansible -m ping all
+#   ansible-playbook play-redis.yml
+
+- name: OS 튜닝과 디스크 마운트
+  hosts: redis
+  become: true
+  roles:
+    - common
+
+- name: Redis 설치와 설정
+  hosts: redis
+  become: true
+  roles:
+    - redis
+
+- name: Sentinel 설치와 설정
+  hosts: redis
+  become: true
+  roles:
+    - sentinel
+
+- name: exporter 설치
+  hosts: redis
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+
+- name: 관측 스택 기동
+  hosts: ops
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: server

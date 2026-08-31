@@ -1,0 +1,14 @@
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+session.tfvars
+crash.log
+
+# Ansible
+*.retry
+
+# 수강생 계정 정보
+credentials.json
+credentials.csv

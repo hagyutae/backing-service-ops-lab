@@ -1,0 +1,92 @@
+# 세션 1 · Redis 운영
+# 이 파일은 Ansible 이 만든다. 노드에서 직접 고치면 다음 실행에 덮어쓴다.
+
+################################## 네트워크 ##################################
+
+# 사설 IP 와 루프백에서만 받는다. 공인 IP 는 ops-1 에만 있다.
+bind {{ ansible_default_ipv4.address }} 127.0.0.1
+
+# protected-mode 를 끈다.
+#
+# 켜 두면 비밀번호가 없는 한 루프백에서 온 연결만 받는다. 이 실습은 ops 노드에서
+# redis-cli -h 로 원격 접속해 세 노드를 다루는 구조라, 켜 두면 챕터 03 부터 09 까지
+# 전부 막힌다. 복제와 Sentinel 도 노드 사이 연결이므로 같이 막힌다.
+#
+# 여는 대신 두 겹으로 막는다.
+#   1) 서비스 노드에는 공인 IP 가 없다
+#   2) NSG 가 서브넷 안(10.0.1.0/24)에서 오는 것만 허용한다
+#
+# 운영에서는 requirepass 나 ACL 로 인증을 건다. 이 실습은 인증 자체가 주제가 아니라
+# 명령마다 -a 를 붙이는 부담만 늘어 빼 두었다.
+protected-mode no
+port {{ redis_port }}
+
+# systemd 에 준비 완료를 알린다.
+# Ubuntu 의 redis-server.service 는 Type=notify 라 이 신호를 기다린다.
+# 빠뜨리면 기동은 되지만 systemd 가 90초를 기다리다 시간 초과로 죽인다.
+supervised systemd
+
+################################### 메모리 ###################################
+
+# 물리 메모리 16 GiB 의 50%.
+# 나머지 절반은 BGSAVE 와 AOF rewrite 가 fork 할 때 쓰는 여유
+maxmemory 8gb
+
+# 실습 시작값. 이후 실습에서 noeviction 과 allkeys-lru 를 번갈아 적용
+maxmemory-policy allkeys-lru
+
+# LRU 표본 수. 늘리면 정확해지고 CPU 사용 증가
+maxmemory-samples 5
+
+################################ 지속성 · RDB ################################
+
+# 데이터 디스크 마운트 지점. OS 디스크에 쓰지 않는다.
+dir /var/lib/redis
+dbfilename dump.rdb
+
+# 경과 시간과 변경된 키 수. 둘 다 만족하면 BGSAVE 를 건다.
+save 900 1
+save 300 10
+save 60 10000
+
+# 스냅샷이 실패하면 쓰기를 막는다. 백업 없이 도는 상태를 만들지 않는다.
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+
+################################ 지속성 · AOF ################################
+
+# 실습에서 켠다. 시작값은 꺼진 상태다.
+appendonly no
+appendfilename "appendonly.aof"
+
+# AOF 는 이 디렉터리 안에 base·incr·manifest 로 나뉘어 생긴다.
+appenddirname "appendonlydir"
+
+# always 는 손실이 사실상 없는 대신 처리량이 가장 낮다.
+# no 는 손실 구간을 예측할 수 없다. everysec 이 기본이고 최대 1초를 잃는다.
+appendfsync everysec
+
+no-appendfsync-on-rewrite yes
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+# AOF 앞부분을 RDB 형식으로 저장한다. 복구 속도와 손실 구간을 함께 잡는다.
+aof-use-rdb-preamble yes
+
+#################################### 복제 ####################################
+
+replica-read-only yes
+
+# 부분 재동기화용 순환 버퍼. 짧게 끊겼을 때 full resync 를 피한다.
+repl-backlog-size 64mb
+repl-backlog-ttl 3600
+repl-timeout 60
+
+#################################### 로그 ####################################
+
+logfile /var/log/redis/redis-server.log
+loglevel notice
+
+# 느린 명령을 남긴다. 단위는 마이크로초.
+slowlog-log-slower-than 10000
+slowlog-max-len 128

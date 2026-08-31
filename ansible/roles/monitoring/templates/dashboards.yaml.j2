@@ -1,0 +1,10 @@
+# 아래 디렉터리의 JSON 을 Grafana 가 부팅할 때 읽어 들인다.
+apiVersion: 1
+
+providers:
+  - name: lab
+    folder: 실습
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

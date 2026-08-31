@@ -1,0 +1,29 @@
+---
+- name: Sentinel 설치
+  ansible.builtin.package:
+    name: redis-sentinel
+    state: present
+
+- name: 작업 디렉터리
+  ansible.builtin.file:
+    path: /var/lib/redis-sentinel
+    owner: redis
+    group: redis
+    mode: "0750"
+    state: directory
+
+- name: sentinel.conf 배포
+  ansible.builtin.template:
+    src: sentinel.conf.j2
+    dest: /etc/redis/sentinel.conf
+    owner: redis
+    group: redis
+    mode: "0640"
+
+# 기동은 하지 않는다. 수강생이 복제를 구성한 뒤 직접 올린다.
+# 복제가 없으면 Sentinel 은 승격시킬 대상이 없어 아무것도 하지 못한다.
+- name: Sentinel 자동 기동 비활성
+  ansible.builtin.systemd:
+    name: redis-sentinel
+    enabled: false
+    state: stopped

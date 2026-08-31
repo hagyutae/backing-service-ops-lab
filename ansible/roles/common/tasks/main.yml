@@ -1,0 +1,51 @@
+---
+# 게스트 OS 안쪽은 전부 Ansible 의 몫이다. Terraform 은 디스크를 붙이는 데까지만 한다.
+
+- name: 시간 동기화
+  ansible.builtin.package:
+    name: chrony
+    state: present
+
+- name: 데이터 디스크 파일 시스템
+  community.general.filesystem:
+    fstype: xfs
+    dev: /dev/disk/azure/scsi1/lun0
+
+- name: 데이터 디렉터리 마운트
+  ansible.posix.mount:
+    path: /var/lib/redis
+    src: /dev/disk/azure/scsi1/lun0
+    fstype: xfs
+    opts: noatime
+    state: mounted
+
+# fork 시점에 커널이 메모리 예약을 거부하면 BGSAVE 가 실패한다.
+# 1 로 두면 예약을 허용하고 실제 사용 시점에 할당한다.
+- name: vm.overcommit_memory
+  ansible.posix.sysctl:
+    name: vm.overcommit_memory
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+# THP 는 fork 를 느리게 만든다. 스냅샷 지연으로 이어진다.
+- name: THP 비활성
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Huge Pages
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+      [Install]
+      WantedBy=multi-user.target
+
+- name: THP 서비스 기동
+  ansible.builtin.systemd:
+    name: disable-thp
+    enabled: true
+    state: started
+    daemon_reload: true
