@@ -1,0 +1,262 @@
+---
+# 세션 4 · 장애대응 · 모니터링
+#
+#
+#   ansible -m ping all
+#   ansible-playbook play-operation.yml
+#
+# ── 인벤토리에 있는 그룹만 구성한다 ──────────────────────────
+# 이 세션은 단계마다 서비스 노드를 갈아 끼운다. 인벤토리에는 그 단계의
+# 서비스 그룹 하나와 [ops] 만 들어 있다.
+#
+#   1단계  [redis] + [ops]
+#   2단계  [mongo] + [ops]
+#   3단계  [kafka] + [ops]
+#   4단계  [ops] 만
+#
+# 없는 그룹을 대상으로 삼은 play 는 Ansible 이 경고 한 줄을 내고 건너뛴다.
+#
+#   [WARNING]: Could not match supplied host pattern, ignoring: mongo
+#
+# **이 경고는 정상이다.** 1단계에서 mongo 와 kafka play 가, 2단계에서 redis 와
+# kafka play 가 이렇게 넘어간다. 실패가 아니므로 failed 수가 늘지 않는다.
+#
+# ── 단계를 바꾼 뒤에는 인벤토리를 먼저 갱신한다 ──────────────
+# ops 노드의 인벤토리는 첫 부팅에 만들어지지 않는다. Terraform 이 output 으로
+# 낸 것을 각자 PC 에서 받아 ops 노드로 옮긴다.
+#
+#   각자 PC:   terraform output -raw inventory > hosts.ini
+#              scp -i ~/.ssh/rkm hosts.ini \
+#                azureuser@<ops 공인 IP>:~/ansible/inventory/hosts.ini
+#
+# 갱신하지 않으면 이 플레이북이 사라진 노드를 찾다가 그 자리에서 멈춘다.
+
+# ── 0. 낡은 호스트 키 정리 ───────────────────────────────────
+# 세 서비스가 사설 IP 10.0.1.5 부터를 돌려 쓴다. 단계가 바뀌면 같은 주소에
+# 다른 호스트 키를 가진 노드가 선다. ops 노드의 known_hosts 에 앞 단계 키가
+# 남아 있으면 SSH 가 「HOST IDENTIFICATION HAS CHANGED」로 막힌다.
+#
+# ansible.cfg 가 host_key_checking 을 끄고 있어 플레이북은 통과하지만,
+# 직접 ssh 를 치거나 ansible.cfg 를 못 찾는 자리에서는 그대로 막힌다.
+- name: 낡은 호스트 키 정리
+  hosts: ops
+  gather_facts: false
+  tasks:
+    - name: 서비스 노드 주소의 키를 지움
+      ansible.builtin.known_hosts:
+        name: "{{ item }}"
+        state: absent
+      loop: [10.0.1.5, 10.0.1.6, 10.0.1.7]
+
+# ── 1. OS 튜닝과 디스크 마운트 ───────────────────────────────
+# 데이터 디스크의 마운트 지점이 서비스마다 다르다. 세그먼트와 데이터 파일이
+# OS 디스크가 아니라 데이터 디스크에 쌓여야 디스크 고갈을 관찰할 수 있다.
+
+- name: OS 튜닝과 디스크 마운트 · Redis
+  hosts: redis
+  become: true
+  roles:
+    - common
+
+- name: OS 튜닝과 디스크 마운트 · MongoDB
+  hosts: mongo
+  become: true
+  vars:
+    data_mount_path: /var/lib/mongodb
+  roles:
+    - common
+
+- name: OS 튜닝과 디스크 마운트 · Kafka
+  hosts: kafka
+  become: true
+  vars:
+    data_mount_path: /var/lib/kafka
+  roles:
+    - common
+
+# ── 2. 서비스 구성 ───────────────────────────────────────────
+# 세션 1·2·3 과 같은 롤을 같은 값으로 부른다. 이 세션에서 구성을 바꾸지 않는다.
+
+- name: Redis 설치와 설정
+  hosts: redis
+  become: true
+  roles:
+    - redis
+
+- name: Sentinel 설치와 설정
+  hosts: redis
+  become: true
+  roles:
+    - sentinel
+
+# ── 2-1. Redis 복제와 Sentinel 기동 ──────────────────────────
+# redis 롤과 sentinel 롤은 복제를 구성하지 않고 Sentinel 을 올리지도 않는다.
+# 세션 1 에서 그 둘이 수강생 실습이었기 때문이다.
+#
+# 세션 4 는 구성이 이미 서 있는 상태에서 시작한다. 구성을 배우는 자리가 아니고,
+# Redis 기동 확인 단계가 connected_slaves 2 를 완료 판정으로 쓴다.
+# 그래서 이 play 가 그 몫을 대신 한다.
+#
+# CONFIG REWRITE 로 redis.conf 에 남긴다. REPLICAOF 만 치면 재기동할 때
+# master 로 돌아가고, 그러면 RB-R01 의 복구 검증(connected_slaves 2 복귀)이
+# 성립하지 않는다. 장애 재현이 프로세스를 내렸다 올리기 때문이다.
+- name: Redis 복제와 Sentinel
+  hosts: redis
+  become: true
+  tasks:
+    - name: replica 를 master 에 붙임
+      ansible.builtin.command:
+        cmd: redis-cli REPLICAOF {{ redis_master_host }} {{ redis_port }}
+      when: redis_role | default("replica") == "replica"
+      changed_when: true
+
+    - name: 복제 설정을 redis.conf 에 남김
+      ansible.builtin.command:
+        cmd: redis-cli CONFIG REWRITE
+      when: redis_role | default("replica") == "replica"
+      changed_when: true
+
+    - name: Sentinel 기동
+      ansible.builtin.systemd:
+        name: redis-sentinel
+        enabled: true
+        state: started
+
+# serial: 1 이 없으면 세 노드를 동시에 재시작해 과반을 잃는다.
+# 복제가 켜진 상태에서는 그 순간 Replica Set 이 통째로 멈춘다.
+- name: MongoDB 설치와 설정
+  hosts: mongo
+  become: true
+  serial: 1
+  vars:
+    mongodb_target: server
+  roles:
+    - mongodb
+
+# serial: 1 이 없으면 세 노드를 동시에 재시작해 controller quorum 의 과반 2를
+# 못 채운다. 그 순간 Topic 생성과 leader 교체가 전부 멈춘다.
+- name: Kafka 설치와 설정
+  hosts: kafka
+  become: true
+  serial: 1
+  vars:
+    kafka_target: server
+  roles:
+    - kafka
+
+# ── 2-2. Replica Set 초기화 ──────────────────────────────────
+# mongodb 롤은 mongod.conf 에 replSetName 만 넣고 rs.initiate() 는 하지 않는다.
+# 세션 2 에서 그것이 수강생 실습이었기 때문이다.
+#
+# 세션 4 는 구성이 이미 서 있는 상태에서 시작한다. MongoDB 구성 확인 단계가
+# 세션 2 와 같은 3멤버 Replica Set 을 확인 대상으로 두고, RB-M01 이 그 위에서 돈다.
+- name: MongoDB Replica Set 초기화
+  hosts: mongo
+  become: true
+  run_once: true
+  tasks:
+    - name: 초기화 여부 확인
+      ansible.builtin.command:
+        cmd: mongosh --quiet --eval "rs.status().ok"
+      register: rs_state
+      changed_when: false
+      failed_when: false
+
+    - name: rs.initiate 로 3멤버 구성
+      ansible.builtin.command:
+        cmd: >-
+          mongosh --quiet --eval
+          'rs.initiate({_id: "{{ mongodb_replset_name }}", members: [
+          {% for h in groups["mongo"] %}
+          {_id: {{ loop.index0 }}, host: "{{ hostvars[h].ansible_host }}:{{ mongodb_port }}"}{{ "," if not loop.last }}
+          {% endfor %} ]})'
+      when: rs_state.rc != 0
+      changed_when: true
+
+    - name: PRIMARY 가 설 때까지 기다림
+      ansible.builtin.command:
+        cmd: mongosh --quiet --eval "rs.status().members.filter(m => m.stateStr == 'PRIMARY').length"
+      register: rs_primary
+      until: rs_primary.stdout | trim == "1"
+      retries: 20
+      delay: 5
+      changed_when: false
+
+# ── 3. ops 노드의 클라이언트 도구 ────────────────────────────
+# 이 세션의 모든 명령이 ops 노드에서 나간다. 서비스 노드에는 공인 IP 가 없다.
+# 도구가 없으면 그 단계의 첫 실습부터 막힌다.
+#
+# 그 단계의 도구만 깐다. 단계가 바뀌면 다음 도구가 깔린다.
+
+- name: ops 노드 클라이언트 도구 · MongoDB
+  hosts: ops
+  become: true
+  vars:
+    mongodb_target: client
+  roles:
+    - role: mongodb
+      when: groups['mongo'] | default([]) | length > 0
+
+- name: ops 노드 클라이언트 도구 · Kafka
+  hosts: ops
+  become: true
+  vars:
+    kafka_target: client
+  roles:
+    - role: kafka
+      when: groups['kafka'] | default([]) | length > 0
+
+# ── 4. exporter ──────────────────────────────────────────────
+# 서비스 노드에는 node_exporter 와 그 서비스의 exporter 를 깐다.
+
+- name: exporter 설치 · Redis
+  hosts: redis
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+      monitoring_service: redis
+
+- name: exporter 설치 · MongoDB
+  hosts: mongo
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+      monitoring_service: mongodb
+
+- name: exporter 설치 · Kafka
+  hosts: kafka
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+      monitoring_service: kafka
+
+# ── 5. ops 노드에도 node_exporter ────────────────────────────
+# 이 노드에서 부하를 발생시킨다. 부하를 주는 쪽이 먼저 한계에 닿는 상황을
+# 가려내려면 이 노드의 자원 지표가 있어야 한다.
+#
+# monitoring_service 를 주지 않는다. 값을 주면 그 서비스의 exporter 까지
+# ops 노드에 깔린다. none 을 주면 서비스별 태스크가 전부 걸러진다.
+- name: ops 노드 node exporter
+  hosts: ops
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+      monitoring_service: none
+
+# ── 6. 관측 스택 ─────────────────────────────────────────────
+# monitoring_scrape_ops 로 ops 노드 자신도 수집 대상에 넣는다.
+# 세션 1·2·3 은 ops 에 node_exporter 를 깔지 않으므로 이 값이 기본 false 다.
+- name: 관측 스택 기동
+  hosts: ops
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: server
+      monitoring_scrape_ops: true
+      # 둘 다 기본값은 꺼짐. 앞 세션 화면 유지
+      monitoring_node_dashboard: true
+      monitoring_full_panels: true

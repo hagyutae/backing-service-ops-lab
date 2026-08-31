@@ -1,6 +1,39 @@
 ---
 # 어느 서비스를 관측하는가. 세션 1 은 값을 주지 않으므로 기본이 redis 다.
+#
+# 이 값은 서비스 노드에 어느 exporter 를 까는지만 정한다. ops 노드에서
+# 무엇을 긁을지는 아래 monitoring_catalog 와 인벤토리가 정한다.
 monitoring_service: redis
+
+# ── 관측 대상 판정 ────────────────────────────────────────────
+# ops 노드가 어느 서비스를 긁을지는 인벤토리에 있는 그룹이 정한다.
+#
+# 세션 1 부터 세션 3 은 서비스 그룹이 하나뿐이라 결과가 한 개다. 그래서
+# 이 표를 넣어도 앞 세 세션의 렌더 결과는 그대로다. 세션 4 의 04-operation
+# 은 redis·mongo·kafka 가 함께 있어 셋이 나온다.
+#
+# node_groups 의 첫 항목이 그 서비스가 인벤토리에 있는지 판정하는 기준이다.
+# 뒤따르는 것은 같은 서비스의 추가 그룹이다. 세션 2 의 Sharding 실습이
+# configsvr 와 shard2 를 더 만든다.
+monitoring_catalog:
+  redis:
+    node_groups: [redis]
+    exporter_port: 9121
+  mongodb:
+    node_groups: [mongo, configsvr, shard2]
+    exporter_port: 9216
+  kafka:
+    node_groups: [kafka]
+    exporter_port: 9308
+
+# ops 노드 자신도 긁을지.
+#
+# 세션 1 부터 세션 3 은 ops 노드에 node_exporter 를 깔지 않는다. 켜면
+# 없는 대상을 긁어 Targets 에 DOWN 이 하나 남는다.
+#
+# 세션 4 는 ops 노드에서 부하를 발생시키므로 그 노드의 자원도 봐야 한다.
+# play-operation.yml 이 ops 에 node_exporter 를 깔고 이 값을 켠다.
+monitoring_scrape_ops: false
 
 # Percona 가 배포하는 mongodb_exporter. Ubuntu 저장소에 패키지가 없어 바이너리를 쓴다.
 mongodb_exporter_version: "0.43.1"
@@ -16,3 +49,219 @@ kafka_exporter_version: "1.9.0"
 # 한 노드에만 붙여도 클러스터 전체 지표가 나오지만, 그 노드가 죽으면
 # 지표가 통째로 끊긴다. 세 대를 모두 준다.
 kafka_exporter_port: 9308
+
+# 노드 대시보드를 올릴지.
+#
+# 세션 1 부터 세션 3 은 서비스 대시보드 하나만 본다. 여기서 하나를 더 올리면
+# 그 세션의 실습 절차가 가리키는 화면과 어긋난다.
+#
+# 세션 4 는 노드 지표를 따로 다루고 그 값이 알람 임계값과 RB-OBS 정상 범위의
+# 근거가 된다. play-operation.yml 이 이 값을 켠다.
+monitoring_node_dashboard: false
+
+# ── 대시보드를 어느 범위로 올릴지 ─────────────────────────────
+# 세션 1 부터 세션 3 은 그 세션이 가르친 지표만 본다. 여기서 패널을 늘리면
+# 앞 세션의 실습 절차와 화면이 어긋난다. 세션 1 의 Grafana 확인 단계는
+# Redis 지표 두 패널을 완료 판정으로 쓴다.
+#
+# 세션 4 는 세 서비스의 지표를 전부 다루고 알람 임계값과 RB-OBS 의 정상 범위가
+# 그 화면에서 나온다. play-operation.yml 이 이 값을 켠다.
+monitoring_full_panels: false
+
+# ── Redis 대시보드 패널 ───────────────────────────────────────
+# 커리큘럼 「Redis 핵심 지표」를 전부 화면에 올린다. 여기 한 줄이 패널 하나다.
+# templates/redis-lab.json.j2 가 이 목록을 돌며 JSON 을 만든다. JSON 을 손대지 않는다.
+#
+# 세션 1 부터 세션 3 이 보는 목록. 세션 4 는 아래 full 목록으로 덮인다.
+redis_panels_basic:
+  - title: 노드 CPU 사용률
+    expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+    unit: percent
+  - title: 노드 메모리 사용률
+    expr: "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
+    unit: percent
+  - title: Redis used_memory
+    expr: redis_memory_used_bytes
+    unit: bytes
+  - title: Redis 연결 수
+    expr: redis_connected_clients
+
+# 세션 4 가 보는 목록.
+#
+# 지표 이름은 oliver006/redis_exporter 소스에서 확인한 것만 쓴다.
+# INFO 필드 이름과 다른 것이 많다. sync_full 은 replica_resyncs_full 이다.
+#
+# maxmemory_policy 는 redis_instance_info 의 label 로 나온다. 값이 아니라
+# label 이라 패널로 그리지 않고 role 과 함께 질의를 좁히는 데 쓴다.
+# Sentinel 시각은 여기 없다. exporter 를 26379 에 따로 붙여야 나온다.
+redis_panels_full:
+  - title: 노드 CPU 사용률
+    expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+    unit: percent
+  - title: 노드 메모리 사용률
+    expr: "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
+    unit: percent
+  - title: 메모리 사용률 (used ÷ maxmemory)
+    expr: "redis_memory_used_bytes / redis_memory_max_bytes"
+    unit: percentunit
+  - title: used_memory
+    expr: redis_memory_used_bytes
+    unit: bytes
+  - title: 메모리 단편화 (mem_fragmentation_ratio)
+    expr: redis_mem_fragmentation_ratio
+  - title: 축출 (evicted_keys 증가율)
+    expr: "rate(redis_evicted_keys_total[5m])"
+  - title: TTL 만료 (expired_keys 증가율)
+    expr: "rate(redis_expired_keys_total[5m])"
+  - title: 히트율 (keyspace_hits 비율)
+    expr: "rate(redis_keyspace_hits_total[5m]) / clamp_min(rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]), 1)"
+    unit: percentunit
+  - title: fork 소요 (latest_fork_usec)
+    expr: redis_latest_fork_seconds
+  - title: 마지막 스냅샷 성공 여부 (rdb_last_bgsave_status)
+    expr: redis_rdb_last_bgsave_status
+  - title: 마지막 저장 이후 변경 수
+    expr: redis_rdb_changes_since_last_save
+  - title: AOF 쓰기 성공 여부 (aof_last_write_status)
+    expr: redis_aof_last_write_status
+  - title: replica 수 (connected_slaves)
+    expr: redis_connected_slaves
+  - title: master 연결 상태 (master_link_up)
+    expr: redis_master_link_up
+  - title: 복제 offset 차
+    expr: "max(redis_connected_slave_offset_bytes) - min(redis_connected_slave_offset_bytes)"
+    unit: bytes
+  - title: 전체 재동기화 (sync_full)
+    expr: "rate(redis_replica_resyncs_full[5m])"
+  - title: 부분 재동기화 (sync_partial_ok)
+    expr: "rate(redis_replica_partial_resync_accepted[5m])"
+  - title: 연결 사용률 (connected_clients ÷ maxclients)
+    expr: "redis_connected_clients / redis_config_maxclients"
+    unit: percentunit
+  - title: 블로킹 대기 (blocked_clients)
+    expr: redis_blocked_clients
+  - title: 거부된 연결 (rejected_connections)
+    expr: "rate(redis_rejected_connections_total[5m])"
+  - title: 처리량 (초당 명령 수)
+    expr: "rate(redis_commands_processed_total[5m])"
+  - title: 명령별 평균 지연
+    expr: "rate(redis_commands_duration_seconds_total[5m]) / clamp_min(rate(redis_commands_total[5m]), 1)"
+    unit: s
+  - title: Redis 기동 여부 (redis_up)
+    expr: redis_up
+
+# ── Kafka 대시보드 패널 ───────────────────────────────────────
+# 챕터 10 이 가르치는 지표를 전부 올린다. Redis 와 같은 방식이다.
+# JMX 지표 이름의 원본은 roles/kafka/templates/kafka-jmx.yml.j2 의 name 값이다.
+# kafka_exporter 쪽 이름은 danielqsj/kafka_exporter README 에서 확인했다.
+kafka_dashboard_panels:
+  - title: 노드 CPU 사용률
+    expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+    unit: percent
+  - title: 노드 메모리 사용량
+    expr: "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes"
+    unit: bytes
+  - title: UnderReplicatedPartitions
+    expr: kafka_server_under_replicated_partitions
+  - title: UnderMinIsrPartitionCount
+    expr: kafka_server_under_min_isr_partition_count
+  - title: OfflinePartitionsCount
+    expr: kafka_controller_offline_partitions_count
+  - title: ActiveControllerCount
+    expr: kafka_controller_active_controller_count
+  - title: ISR 축소 횟수
+    expr: "rate(kafka_server_isr_shrinks_total[5m])"
+  - title: ISR 확장 횟수
+    expr: "rate(kafka_server_isr_expands_total[5m])"
+  - title: 요청 처리 스레드 여유 (RequestHandlerAvgIdlePercent)
+    expr: kafka_server_request_handler_avg_idle_percent
+    unit: percentunit
+  - title: 유입 처리량 (BytesInPerSec)
+    expr: "rate(kafka_server_bytes_in_total[5m])"
+    unit: Bps
+  - title: 유출 처리량 (BytesOutPerSec)
+    expr: "rate(kafka_server_bytes_out_total[5m])"
+    unit: Bps
+  - title: 디스크 flush 지연
+    expr: kafka_log_flush_time_ms_mean
+    unit: ms
+  - title: Consumer Group 별 Lag
+    expr: kafka_consumergroup_lag_sum
+  - title: Partition 별 ISR 수
+    expr: kafka_topic_partition_in_sync_replica
+  - title: Topic 별 Partition 수
+    expr: kafka_topic_partitions
+  - title: 데이터 디스크 사용량
+    expr: 'node_filesystem_size_bytes{mountpoint="/var/lib/kafka"} - node_filesystem_avail_bytes{mountpoint="/var/lib/kafka"}'
+    unit: bytes
+  - title: 열린 파일 디스크립터
+    expr: node_filefd_allocated
+  # (실측) 챕터 12 가 힙 사용률을 보라고 하므로 패널을 둔다. JMX exporter 가
+  # jvm_ 계열을 함께 내보내므로 kafka_ 이름과 규칙이 다르다.
+  - title: JVM 힙 사용률
+    expr: 'jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}'
+    unit: percentunit
+  - title: 디스크에서 읽은 바이트 증가율
+    expr: 'rate(node_disk_read_bytes_total{device="sdc"}[5m])'
+    unit: Bps
+
+# ── MongoDB 대시보드 패널 ─────────────────────────────────────
+# 챕터 08 이 가르치는 지표를 올린다.
+#
+# 이름 규칙은 percona/mongodb_exporter 의 exporter/metrics.go 에 있는
+# prometheusize() 에서 확인했다. serverStatus 는 ss, replSetGetStatus 는 rs,
+# serverStatus.wiredTiger 는 ss_wt 로 줄이고, 영숫자와 밑줄이 아닌 문자를
+# 밑줄로 바꾼 뒤 mongodb_ 를 앞에 붙인다. 대소문자는 그대로 둔다.
+#
+# 같은 파일의 nodeToPDMetrics 에 등록된 경로는 이름이 아니라 label 이 된다.
+# nameAndLabel() 이 매칭된 접두사만 이름으로 쓰고 그 아래 마디를 label 값으로
+# 넘기므로, serverStatus.globalLock.currentQueue.total 은
+# mongodb_ss_globalLock_currentQueue{count_type="total"} 로 나온다.
+# 동시 실행 슬롯은 이 규칙을 타지 않는다. exporter 가 전용 collector 로 따로
+# 내보내므로 serverStatus 경로가 queues.execution.read.available 여도 지표
+# 이름은 mongodb_ss_wt_concurrentTransactions_available{txn_rw="read"} 다.
+# 경로를 그대로 옮긴 mongodb_ss_queues_execution_* 는 존재하지 않는다.
+#
+# 아래 이름은 전부 3회차 검증에서 /metrics 를 받아 대조한 것이다.
+mongodb_dashboard_panels:
+  - title: 노드 CPU 사용률
+    expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+    unit: percent
+  - title: 노드 메모리 사용량
+    expr: "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes"
+    unit: bytes
+  - title: 복제 지연 (PRIMARY 대비 optimeDate 차)
+    expr: '(max by (rs_nm) (mongodb_members_optimeDate{rs_state="1", member_state="PRIMARY"} > 0) - on(rs_nm) group_right() max by (rs_nm, member_idx) (mongodb_members_optimeDate{rs_state="1"} > 0)) / 1000'
+    unit: s
+  - title: 연결 수 (current)
+    expr: 'mongodb_ss_connections{conn_type="current"}'
+  - title: 남은 연결 수 (available)
+    expr: 'mongodb_ss_connections{conn_type="available"}'
+  - title: WiredTiger 캐시 사용량
+    expr: mongodb_ss_wt_cache_bytes_currently_in_the_cache
+    unit: bytes
+  - title: WiredTiger dirty 바이트
+    expr: mongodb_ss_wt_cache_tracked_dirty_bytes_in_the_cache
+    unit: bytes
+  - title: 캐시로 읽어 들인 바이트 증가율
+    expr: "rate(mongodb_ss_wt_cache_bytes_read_into_cache[5m])"
+    unit: Bps
+  # (실측) exporter 가 이 값만 전용 collector 로 따로 내보낸다. 경로를 그대로
+  # 옮긴 mongodb_ss_queues_execution_* 라는 이름은 존재하지 않는다.
+  # label 이름도 txn_rw_type 이 아니라 txn_rw 다.
+  - title: 읽기 슬롯 잔량 (queues.execution.read.available)
+    expr: 'mongodb_ss_wt_concurrentTransactions_available{txn_rw="read"}'
+  - title: 쓰기 슬롯 잔량 (queues.execution.write.available)
+    expr: 'mongodb_ss_wt_concurrentTransactions_available{txn_rw="write"}'
+  # (실측) currentQueue 바로 아래가 스칼라라 count_type label 로 갈린다
+  - title: 대기 큐 (globalLock.currentQueue)
+    expr: 'mongodb_ss_globalLock_currentQueue{count_type="total"}'
+  - title: 정렬용 인덱스 없는 질의 (scanAndOrder)
+    expr: "rate(mongodb_ss_metrics_operation_scanAndOrder[5m])"
+  - title: 검사한 문서 수 증가율
+    expr: "rate(mongodb_ss_metrics_queryExecutor_scanned[5m])"
+
+# ── 세션에 따라 목록을 고른다 ─────────────────────────────────
+# 템플릿은 *_dashboard_panels 만 본다. 어느 목록이 들어갈지는 여기서 정한다.
+# Kafka 와 MongoDB 는 세션 3·2 의 대시보드를 따로 두지 않았으므로 그대로 쓴다.
+redis_dashboard_panels: "{{ redis_panels_full if monitoring_full_panels else redis_panels_basic }}"

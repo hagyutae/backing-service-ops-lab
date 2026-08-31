@@ -1,0 +1,42 @@
+{#
+  MongoDB 실습 대시보드.
+
+  패널을 여기서 손으로 쓰지 않는다. defaults/main.yml 의 mongodb_dashboard_panels
+  목록이 원본이고 이 파일은 그것을 JSON 으로 옮기기만 한다. 패널을 더하거나
+  질의를 고칠 때는 그 목록만 고친다.
+
+  배치는 2열로 자동 계산한다. 목록 순서가 화면 순서다.
+#}
+{
+  "uid": "mongodb-lab",
+  "title": "MongoDB 실습",
+  "tags": ["lab", "mongodb"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+{% for p in mongodb_dashboard_panels %}
+    {
+      "id": {{ loop.index }},
+      "type": "timeseries",
+      "title": {{ p.title | to_json }},
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": {{ 0 if loop.index0 % 2 == 0 else 12 }}, "y": {{ (loop.index0 // 2) * 8 }} },
+      "fieldConfig": {
+        "defaults": { {% if p.unit is defined %}"unit": {{ p.unit | to_json }}{% endif %} },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": {{ p.expr | to_json }},
+          "legendFormat": "{{ '{{instance}}' }}"
+        }
+      ]
+    }{{ "," if not loop.last }}
+{% endfor %}
+  ]
+}

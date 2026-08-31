@@ -6,8 +6,14 @@
 # monitoring_service 로 어느 서비스인지 나눈다.
 #   redis   : 세션 1. 기본값이라 play-redis.yml 은 값을 주지 않아도 된다
 #   mongodb : 세션 2
+#   kafka   : 세션 3
 #
 # node_exporter 는 서비스와 무관하게 공통이다. 서비스별 exporter 만 갈린다.
+#
+# monitoring_service 는 node 쪽에만 쓴다. server 쪽이 무엇을 긁고 어느
+# 대시보드를 올릴지는 인벤토리에 있는 그룹이 정한다. 아래 「관측 대상
+# 서비스 판정」을 본다. 세션 4 는 세 서비스를 함께 관측하므로 값 하나로
+# 나눌 수 없다.
 
 - name: node exporter 설치
   when: monitoring_target == "node"
@@ -182,17 +188,80 @@
     - { src: dashboards.yaml.j2, dest: /etc/grafana/provisioning/dashboards/lab.yaml }
   notify: restart grafana
 
-# 서비스에 맞는 대시보드만 올린다. 다른 서비스 것을 함께 올리면
+# 인벤토리에 있는 그룹으로 관측 대상 서비스를 정한다.
+#
+# 세션 1 부터 세션 3 은 서비스 그룹이 하나뿐이라 한 개가 나오고, 세션 4 의
+# 04-operation 은 셋이 나온다. 아래 대시보드 배포와 prometheus.yml 이 이 값을 쓴다.
+#
+# monitoring_service 로 나누지 않는 이유는 그 변수가 값 하나라 세 서비스를
+# 함께 관측하는 세션 4 를 표현하지 못하기 때문이다.
+# 그룹이 「있는가」가 아니라 「비어 있지 않은가」로 본다.
+# 세션 4 는 단계마다 인벤토리를 갈아 끼우는데, 빈 그룹 머리가 남으면
+# 대상 없는 job 이 생겨 Targets 화면에 아무것도 안 띄운다.
+# 세션 1 부터 세션 3 은 그룹이 하나뿐이고 비어 있지 않아 결과가 같다.
+- name: 관측 대상 서비스 판정
+  when:
+    - monitoring_target == "server"
+    - groups[item.value.node_groups[0]] | default([]) | length > 0
+  ansible.builtin.set_fact:
+    monitoring_present: "{{ (monitoring_present | default([])) + [item.key] }}"
+  loop: "{{ monitoring_catalog | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+# 인벤토리에 있는 서비스의 대시보드만 올린다. 없는 서비스 것을 함께 올리면
 # 지표가 없는 패널이 빈 채로 남아 수강생이 장애로 오해한다.
 - name: 실습 대시보드 배포
   when: monitoring_target == "server"
   ansible.builtin.copy:
-    src: "{{ monitoring_service }}-lab.json"
-    dest: "/var/lib/grafana/dashboards/{{ monitoring_service }}-lab.json"
+    src: "{{ item }}-lab.json"
+    dest: "/var/lib/grafana/dashboards/{{ item }}-lab.json"
     owner: grafana
     group: grafana
     mode: "0644"
+  loop: "{{ ((monitoring_node_dashboard | bool | ternary(['node'], [])) + (monitoring_present | default([]))) | difference(['redis', 'mongodb', 'kafka']) }}"
   notify: restart grafana
+
+# 서비스 대시보드 셋은 템플릿이다. 패널을 defaults 의 <서비스>_dashboard_panels
+# 목록에서 만든다. 패널을 더하거나 질의를 고칠 때 JSON 을 손대지 않고 그 목록만 고친다.
+# node-lab.json 만 아직 JSON 을 그대로 쓴다.
+- name: 서비스 대시보드 배포
+  when: monitoring_target == "server"
+  ansible.builtin.template:
+    src: "{{ item }}-lab.json.j2"
+    dest: "/var/lib/grafana/dashboards/{{ item }}-lab.json"
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  loop: "{{ monitoring_present | default([]) }}"
+  notify: restart grafana
+
+# ── 앞 단계의 대시보드를 지운다 ──────────────────────────────
+# ops 노드는 세션 내내 유지되므로 배포만 하면 앞 단계 JSON 이 그대로 남는다.
+# 세션 4 에서 MongoDB 단계로 넘어가도 Grafana 목록에 redis-lab 이 보이고,
+# 그 패널은 데이터가 끊긴 채 비어 있다. 수강생이 「전환이 실패했다」로 읽는다.
+#
+# 세션 1 부터 세션 3 은 서비스가 하나뿐이라 지울 것이 없다.
+- name: 지난 단계의 대시보드 정리
+  when: monitoring_target == "server"
+  ansible.builtin.file:
+    path: "/var/lib/grafana/dashboards/{{ item }}-lab.json"
+    state: absent
+  loop: "{{ monitoring_catalog.keys() | list | difference(monitoring_present | default([])) }}"
+  notify: restart grafana
+
+# 알람 규칙 파일. 수강생이 실습에서 직접 채운다.
+# 이미 있으면 덮어쓰지 않는다. 플레이북을 다시 돌려도 쓴 규칙이 살아남아야 한다.
+- name: 알람 규칙 뼈대 배포
+  when: monitoring_target == "server"
+  ansible.builtin.template:
+    src: alert-rules.yml.j2
+    dest: /etc/prometheus/alert-rules.yml
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+    force: false
+  notify: restart prometheus
 
 - name: prometheus.yml 배포
   when: monitoring_target == "server"

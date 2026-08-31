@@ -1,0 +1,50 @@
+# 세션 4 · 장애대응 · 모니터링 스택의 변수 예시.
+#
+# ── 쓰는 방법 ────────────────────────────────────────────────
+#   cd lab/terraform/04-operation
+#   cp session.tfvars.example session.tfvars
+#   terraform apply -var-file=session.tfvars
+#
+# session.tfvars 는 .gitignore 대상이다. 값을 저장소에 올리지 않는다.
+#
+# ── 값을 얻는 곳 ─────────────────────────────────────────────
+#   구독 ID : az account show --query id -o tsv
+#   그룹    : rkm-<전달받은 계정 이름>-ops-rg
+#             세션마다 끝이 다르다. 세션 1 은 -rg, 세션 2 는 -mongo-rg,
+#             세션 3 은 -kafka-rg, 세션 4 는 -ops-rg 다. 20명이 한 구독을
+#             공유하므로 이름이 겹치면 안 되고, 세션끼리도 겹치지 않아야
+#             자원 정리가 남의 것을 지우지 않는다
+#   공인 IP : curl -s ifconfig.me
+#   SSH 키  : ssh-keygen -t rsa -b 4096 -f ~/.ssh/rkm -C rkm
+#             Azure 는 RSA 2048비트 이상과 ED25519 를 받는다. 이 과정은 RSA 4096 으로 통일
+
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+resource_group_name = "rkm-student07-ops-rg"
+location            = "koreacentral"
+allowed_cidrs       = ["203.0.113.10/32"]
+ssh_public_key_path = "~/.ssh/rkm.pub"
+
+# ── 단계 ─────────────────────────────────────────────────────
+# 이 값 하나가 어느 서비스 노드를 띄울지 정한다. 동시에 뜨는 것은 항상 4대다.
+#
+#   1  ops-1 + redis-1·2·3     관측 기초부터 Redis 대표 장애까지
+#   2  ops-1 + mongo-1·2·3     MongoDB
+#   3  ops-1 + kafka-1·2·3     Kafka
+#   4  ops-1                   런북 정리
+#
+# ── 단계를 바꿀 때 ───────────────────────────────────────────
+# 이 파일의 값을 고치고 apply 한다. 전환 한 번에 apply 를 두 번 한다.
+# 세 서비스가 같은 사설 IP 를 돌려 쓰므로 앞 노드를 먼저 지워야 한다.
+#
+#   stage = 4 로 고친 뒤  terraform apply -var-file=session.tfvars
+#   stage = 2 로 고친 뒤  terraform apply -var-file=session.tfvars
+#
+# **-var stage=2 로만 주지 않는다.** Terraform 의 -var 는 그 실행에만
+# 적용되고 state 에 남지 않는다. 다음 apply 에서 값을 다시 주지 않으면
+# 이 파일의 값으로 돌아가 앞 단계 노드가 되살아난다.
+#
+# ── 전환 전에 확인할 것 ──────────────────────────────────────
+# 앞 단계의 서비스 노드가 사라진다. 그 노드 안에 둔 파일은 함께 없어진다.
+# 런북과 적어 둔 값은 ops 노드에 두므로 남지만, 서비스 노드에서 만든 것이
+# 있으면 먼저 옮긴다. ops 노드와 공인 IP 는 단계가 바뀌어도 그대로다.
+stage = 1
