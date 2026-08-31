@@ -3,3 +3,9 @@
   ansible.builtin.command:
     cmd: udevadm control --reload-rules
   changed_when: true
+
+# systemd 기본 한도를 바꾸면 데몬이 설정을 다시 읽어야 한다.
+# 이미 떠 있는 서비스에는 재시작 전까지 적용되지 않는다.
+- name: systemd 데몬 재적용
+  ansible.builtin.systemd:
+    daemon_reexec: true

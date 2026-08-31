@@ -1,0 +1,206 @@
+---
+# Kafka 설치와 설정.
+#
+# 브로커에는 서버를, ops 노드에는 CLI 도구를 깐다. 어느 쪽인지는
+# play-kafka.yml 이 kafka_target 으로 정한다. 배포본 하나에 서버와 CLI 가
+# 함께 들어 있어 설치 절차는 같고, 설정과 기동만 갈린다.
+
+# Kafka 4.x 는 Java 17 이상을 요구한다. Ubuntu 24.04 의 기본 JDK 가 21 이다.
+- name: JDK 설치
+  ansible.builtin.package:
+    name: openjdk-21-jre-headless
+    state: present
+
+- name: kafka 계정
+  ansible.builtin.group:
+    name: "{{ kafka_group }}"
+    system: true
+  when: kafka_target == "server"
+
+- name: kafka 사용자
+  ansible.builtin.user:
+    name: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+  when: kafka_target == "server"
+
+- name: 설치 디렉터리
+  ansible.builtin.file:
+    path: "{{ kafka_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# creates: 가 있어 두 번째 실행부터는 내려받지 않는다.
+# 20명이 같은 시각에 같은 미러를 때리므로 재시도를 넉넉히 둔다.
+- name: 배포본 내려받기와 풀기
+  ansible.builtin.unarchive:
+    src: "{{ kafka_mirror }}/{{ kafka_version }}/kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+    dest: "{{ kafka_install_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: "{{ kafka_install_dir }}/bin/kafka-server-start.sh"
+    owner: root
+    group: root
+  register: kafka_download
+  retries: 5
+  delay: 15
+  until: kafka_download is succeeded
+
+# 명령을 칠 때 절대 경로를 매번 적지 않게 한다. 실습 절차가 kafka-topics.sh 를
+# 경로 없이 부른다.
+- name: CLI 를 PATH 에 올림
+  ansible.builtin.copy:
+    dest: /etc/profile.d/kafka.sh
+    mode: "0644"
+    content: |
+      export PATH="$PATH:{{ kafka_install_dir }}/bin"
+
+# ── 여기부터 브로커 전용 ─────────────────────────────────────
+
+- name: 로그 디렉터리
+  ansible.builtin.file:
+    path: "{{ kafka_log_dir }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+  when: kafka_target == "server"
+
+# 브로커가 자기 동작 로그를 남기는 곳이다. 세그먼트가 쌓이는 log.dirs 와 다르다.
+#
+# kafka-run-class.sh 는 LOG_DIR 이 비어 있으면 설치 디렉터리 아래 logs 로 잡고,
+# 없으면 mkdir -p 로 만든다. 그런데 /opt/kafka 는 root 소유이고 브로커는 kafka
+# 계정으로 돌아 그 mkdir 이 거부된다. 그러면 server.log 가 아예 생기지 않는다.
+#
+# 유닛에서 LOG_DIR 을 다른 경로로 돌리는 방법도 있으나, 그러면 공식 문서와
+# 강사 노트가 가리키는 경로가 갈린다. 기본 경로를 그대로 두고 소유자만 맞춘다.
+- name: 브로커 동작 로그 디렉터리
+  ansible.builtin.file:
+    path: "{{ kafka_install_dir }}/logs"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+  when: kafka_target == "server"
+
+# 클러스터 ID 는 세 노드가 같아야 한다. 다르면 브로커가 서로를 받아들이지
+# 않고 클러스터가 서지 않는다.
+#
+# 첫 노드에서 한 번 만들고 나머지에 같은 값을 배포한다. keyFile 을 다루는
+# mongodb 롤과 같은 방식이다. serial: 1 로 돌므로 run_once 는 배치마다
+# 한 번씩, 즉 노드마다 세 번 돈다. creates: 가 재생성을 막아 세 노드가
+# 같은 값을 받는다.
+- name: 클러스터 ID 생성 (첫 노드에서 한 번)
+  ansible.builtin.shell:
+    cmd: "{{ kafka_install_dir }}/bin/kafka-storage.sh random-uuid > /tmp/kafka-cluster-id"
+    creates: /tmp/kafka-cluster-id
+  delegate_to: "{{ groups['kafka'][0] }}"
+  run_once: true
+  when: kafka_target == "server"
+
+- name: 클러스터 ID 읽기
+  ansible.builtin.slurp:
+    src: /tmp/kafka-cluster-id
+  delegate_to: "{{ groups['kafka'][0] }}"
+  run_once: true
+  register: kafka_cluster_id_raw
+  when: kafka_target == "server"
+
+- name: 클러스터 ID 를 변수로
+  ansible.builtin.set_fact:
+    kafka_cluster_id: "{{ kafka_cluster_id_raw.content | b64decode | trim }}"
+  when: kafka_target == "server"
+
+# ── JMX exporter ─────────────────────────────────────────────
+# 브로커 JVM 안에서 java agent 로 돈다. kafka_exporter 가 내지 않는
+# ActiveControllerCount 같은 MBean 값이 여기서 나온다.
+- name: JMX exporter 디렉터리
+  ansible.builtin.file:
+    path: "{{ kafka_jmx_exporter_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: kafka_target == "server"
+
+- name: JMX exporter 내려받기
+  ansible.builtin.get_url:
+    url: >-
+      https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/{{ kafka_jmx_exporter_version }}/jmx_prometheus_javaagent-{{ kafka_jmx_exporter_version }}.jar
+    dest: "{{ kafka_jmx_exporter_dir }}/jmx_prometheus_javaagent.jar"
+    owner: root
+    group: root
+    mode: "0644"
+  register: kafka_jmx_download
+  retries: 5
+  delay: 15
+  until: kafka_jmx_download is succeeded
+  when: kafka_target == "server"
+
+# 규칙을 좁게 잡는다. Kafka 의 MBean 을 전부 열면 시계열 수가 폭발한다.
+- name: JMX exporter 규칙 배포
+  ansible.builtin.template:
+    src: kafka-jmx.yml.j2
+    dest: "{{ kafka_jmx_exporter_dir }}/kafka-jmx.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: kafka 재시작
+  when: kafka_target == "server"
+
+# 세 노드를 "<id>@<사설 IP>:<컨트롤러 포트>" 로 이어 붙인다.
+#
+# 템플릿 안에서 만들지 않고 여기서 만드는 이유는 그 줄이 한 줄로 길어지기
+# 때문이다. 설정 파일은 수강생이 직접 열어 읽는 물건이다.
+- name: 컨트롤러 쿼럼 목록 구성
+  ansible.builtin.set_fact:
+    kafka_quorum_voters: "{% for h in groups['kafka'] %}{{ hostvars[h].kafka_node_id }}@{{ hostvars[h].ansible_host }}:{{ kafka_controller_port }}{% if not loop.last %},{% endif %}{% endfor %}"
+  when: kafka_target == "server"
+
+- name: server.properties 배포
+  ansible.builtin.template:
+    src: server.properties.j2
+    dest: "{{ kafka_install_dir }}/config/server.properties"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: kafka 재시작
+  when: kafka_target == "server"
+
+# 파일 핸들 한도는 common 롤이 올린다. 여기서는 유닛 파일이 그 값을 받도록만 한다.
+- name: systemd 유닛 배포
+  ansible.builtin.template:
+    src: kafka.service.j2
+    dest: /etc/systemd/system/kafka.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: kafka 재시작
+  when: kafka_target == "server"
+
+# KRaft 는 메타데이터를 Kafka 자신의 로그에 담는다. 그 로그를 쓰려면
+# 스토리지를 먼저 초기화해야 한다.
+#
+# 최초 1회만 돈다. 이미 포맷된 디렉터리에 다시 돌리면 실패한다.
+# meta.properties 가 그 표시다.
+- name: 스토리지 포맷 (최초 1회)
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-storage.sh format
+      --cluster-id {{ kafka_cluster_id }}
+      --config {{ kafka_install_dir }}/config/server.properties
+    creates: "{{ kafka_log_dir }}/meta.properties"
+  become_user: "{{ kafka_user }}"
+  when: kafka_target == "server"
+
+- name: kafka 기동
+  ansible.builtin.systemd:
+    name: kafka
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: kafka_target == "server"

@@ -1,0 +1,7 @@
+---
+# 한 대씩 재시작한다. 세 노드를 동시에 내리면 컨트롤러 쿼럼의 과반 2를
+# 채우지 못해 메타데이터 변경이 멈춘다. serial: 1 은 play-kafka.yml 쪽에서 준다.
+- name: kafka 재시작
+  ansible.builtin.systemd:
+    name: kafka
+    state: restarted

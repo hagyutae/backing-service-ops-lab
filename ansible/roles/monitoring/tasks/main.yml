@@ -80,6 +80,48 @@
     state: started
     daemon_reload: true
 
+# ── Kafka ────────────────────────────────────────────────────
+# Ubuntu 저장소에 패키지가 없다. 배포되는 바이너리를 내려받는다.
+- name: kafka exporter 내려받기
+  when: monitoring_target == "node" and monitoring_service == "kafka"
+  ansible.builtin.unarchive:
+    src: "https://github.com/danielqsj/kafka_exporter/releases/download/v{{ kafka_exporter_version }}/kafka_exporter-{{ kafka_exporter_version }}.linux-amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts: [--strip-components=1, --wildcards, "*/kafka_exporter"]
+    creates: /usr/local/bin/kafka_exporter
+    mode: "0755"
+
+# 세 브로커를 모두 준다. 한 대만 주면 그 노드가 죽는 순간 지표가 통째로 끊겨
+# 「브로커 1대 정지」 실습에서 관찰할 대상이 사라진다.
+- name: kafka exporter 유닛
+  when: monitoring_target == "node" and monitoring_service == "kafka"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/kafka-exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Kafka Exporter
+      After=network-online.target kafka.service
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/kafka_exporter{% for host in groups['kafka'] %} --kafka.server={{ hostvars[host].ansible_host }}:{{ kafka_client_port | default(9092) }}{% endfor %} --web.listen-address=:{{ kafka_exporter_port }}
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart kafka exporter
+
+- name: kafka exporter 기동
+  when: monitoring_target == "node" and monitoring_service == "kafka"
+  ansible.builtin.systemd:
+    name: kafka-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+
 # Ubuntu 24.04 저장소에는 grafana 패키지가 없다. 공식 저장소를 등록한다.
 - name: Grafana 저장소 키
   when: monitoring_target == "server"

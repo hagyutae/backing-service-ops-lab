@@ -8,3 +8,11 @@ mongodb_exporter_version: "0.43.1"
 # 인증을 켜기 전에는 계정 없이 붙는다. 챕터 10 에서 clusterMonitor 계정을 넣어 다시 돌린다.
 #   -e mongodb_exporter_uri=mongodb://exporter:...@127.0.0.1:27017/?authSource=admin
 mongodb_exporter_uri: "mongodb://127.0.0.1:27017"
+
+# danielqsj 가 배포하는 kafka_exporter. Ubuntu 저장소에 패키지가 없어 바이너리를 쓴다.
+kafka_exporter_version: "1.9.0"
+
+# exporter 가 붙을 브로커. 사설 IP 를 인벤토리에서 가져온다.
+# 한 노드에만 붙여도 클러스터 전체 지표가 나오지만, 그 노드가 죽으면
+# 지표가 통째로 끊긴다. 세 대를 모두 준다.
+kafka_exporter_port: 9308

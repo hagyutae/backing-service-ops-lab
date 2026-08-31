@@ -1,6 +1,17 @@
 ---
 # 게스트 OS 안쪽은 전부 Ansible 의 몫이다. Terraform 은 디스크를 붙이는 데까지만 한다.
 
+# 이미지에 딸려 온 apt 목록은 오래됐고 universe 저장소가 빠져 있을 수 있다.
+# 갱신하지 않으면 그 뒤의 패키지 설치가 "No package matching" 으로 실패한다.
+#
+# 세션 1·2 에서는 redis·mongodb 롤이 저장소를 등록하며 캐시를 갱신해 가려져
+# 있었다. Kafka 는 배포본을 tarball 로 받아 저장소를 등록하는 태스크가 없고,
+# 그래서 세션 3 검증에서 node exporter 설치가 두 노드에서 막혔다.
+- name: 패키지 목록 갱신
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: 시간 동기화
   ansible.builtin.package:
     name: chrony
@@ -52,12 +63,46 @@
     state: started
     daemon_reload: true
 
-# MongoDB 와 Redis 둘 다 랜덤 IO 가 많다. 큰 readahead 는 쓰지 않을 블록을
-# 미리 읽어 캐시를 밀어낸다. 기본 128 섹터(64 KiB)를 32 섹터(16 KiB)로 줄인다.
-- name: readahead 축소
+# 값의 근거는 defaults/main.yml 의 common_read_ahead_kb 주석에 있다.
+# 랜덤 IO 가 많은 세션은 줄이고, 순차 읽기인 Kafka 는 커널 기본값을 쓴다.
+- name: readahead 설정
   ansible.builtin.copy:
     dest: /etc/udev/rules.d/85-readahead.rules
     mode: "0644"
     content: |
-      ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/read_ahead_kb}="16"
+      ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/read_ahead_kb}="{{ common_read_ahead_kb }}"
   notify: udev 규칙 재적용
+
+# 파티션마다 세그먼트 파일과 인덱스 파일이 열린다. 기본 한도 1024 로는
+# 파티션이 늘었을 때 브로커가 파일을 못 연다.
+#
+# 두 곳을 함께 올려야 한다. limits.d 는 로그인 셸에 걸리고, systemd 로
+# 뜨는 서비스는 그 값을 받지 않는다. 유닛 파일의 LimitNOFILE 이 따로 필요하다.
+# 여기서는 systemd 기본값을 올리고, 유닛에서 명시하는 것은 각 서비스 롤이 한다.
+- name: 파일 핸들 한도 상향 (로그인 셸)
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/90-nofile.conf
+    mode: "0644"
+    content: |
+      * soft nofile {{ common_nofile_limit }}
+      * hard nofile {{ common_nofile_limit }}
+      root soft nofile {{ common_nofile_limit }}
+      root hard nofile {{ common_nofile_limit }}
+
+# copy 는 없는 디렉터리를 만들지 않는다. system.conf.d 는 기본으로 없다.
+- name: systemd drop-in 디렉터리
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: 파일 핸들 한도 상향 (systemd 기본값)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system.conf.d/90-nofile.conf
+    mode: "0644"
+    content: |
+      [Manager]
+      DefaultLimitNOFILE={{ common_nofile_limit }}
+  notify: systemd 데몬 재적용

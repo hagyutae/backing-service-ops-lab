@@ -1,0 +1,29 @@
+[Unit]
+Description=Apache Kafka (KRaft)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ kafka_user }}
+Group={{ kafka_group }}
+
+# Kafka 는 메시지를 힙에 캐싱하지 않고 OS page cache 에 의존한다.
+# 힙을 키우면 그만큼 page cache 가 줄어 읽기가 디스크로 내려간다.
+Environment="KAFKA_HEAP_OPTS={{ kafka_heap_opts }}"
+
+# JMX exporter 를 브로커 JVM 안에 붙인다. 별도 프로세스가 아니라
+# 브로커가 죽으면 이 지표도 함께 끊긴다.
+Environment="KAFKA_OPTS=-javaagent:{{ kafka_jmx_exporter_dir }}/jmx_prometheus_javaagent.jar={{ kafka_jmx_exporter_port }}:{{ kafka_jmx_exporter_dir }}/kafka-jmx.yml"
+
+# 파티션마다 세그먼트 파일과 인덱스 파일이 열린다. 기본 한도로는 파티션이
+# 늘었을 때 브로커가 파일을 못 연다. 값은 common 롤의 변수가 정한다.
+LimitNOFILE={{ common_nofile_limit | default(65536) }}
+
+ExecStart={{ kafka_install_dir }}/bin/kafka-server-start.sh {{ kafka_install_dir }}/config/server.properties
+ExecStop={{ kafka_install_dir }}/bin/kafka-server-stop.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

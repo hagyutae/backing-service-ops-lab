@@ -8,9 +8,15 @@ global:
   scrape_timeout: 10s
 
 scrape_configs:
-{% set svc_group = 'redis' if 'redis' in groups else ('mongo' if 'mongo' in groups else none) %}
-{% set svc_name = 'redis' if 'redis' in groups else 'mongodb' %}
-{% set svc_port = 9121 if 'redis' in groups else 9216 %}
+{% if 'redis' in groups %}
+{%   set svc_group = 'redis' %}{% set svc_name = 'redis' %}{% set svc_port = 9121 %}
+{% elif 'mongo' in groups %}
+{%   set svc_group = 'mongo' %}{% set svc_name = 'mongodb' %}{% set svc_port = 9216 %}
+{% elif 'kafka' in groups %}
+{%   set svc_group = 'kafka' %}{% set svc_name = 'kafka' %}{% set svc_port = 9308 %}
+{% else %}
+{%   set svc_group = none %}
+{% endif %}
 {% if svc_group %}
   - job_name: node
     static_configs:
@@ -39,4 +45,16 @@ scrape_configs:
 {% endfor %}
         labels:
           service: {{ svc_name }}
+{% if svc_group == 'kafka' %}
+
+  # 브로커 JVM 안의 java agent. kafka_exporter 가 내지 않는 MBean 값이 여기서 나온다.
+  - job_name: kafka_jmx
+    static_configs:
+      - targets:
+{% for host in groups['kafka'] %}
+          - "{{ hostvars[host].ansible_host }}:{{ kafka_jmx_exporter_port | default(9404) }}"
+{% endfor %}
+        labels:
+          service: kafka
+{% endif %}
 {% endif %}

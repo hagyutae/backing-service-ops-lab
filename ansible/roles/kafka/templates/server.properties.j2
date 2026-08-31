@@ -1,0 +1,61 @@
+# 세션 3 · Kafka 브로커 설정
+# Ansible 이 배포했다. 직접 고치면 다음 플레이북 실행에서 덮어쓴다.
+
+# ── KRaft ────────────────────────────────────────────────────
+# 이 노드가 브로커와 컨트롤러를 겸한다. combined 모드다.
+#
+# Apache Kafka 는 운영 환경에서 combined 를 권장하지 않는다. 컨트롤러가
+# 나머지와 격리되지 않고, 컨트롤러를 브로커와 따로 롤링하거나 늘릴 수 없다.
+# 이 실습이 combined 인 것은 분리하면 컨트롤러 전용 노드 세 대가 더 필요해서다.
+#
+# node.id 는 노드마다 다르고, controller.quorum.voters 에 적힌 ID 와 같아야 한다.
+# 어긋나면 기동 직후 종료한다. 세 노드가 모두 투표권을 가지므로 과반은 2다.
+process.roles=broker,controller
+node.id={{ kafka_node_id }}
+controller.quorum.voters={{ kafka_quorum_voters }}
+controller.listener.names=CONTROLLER
+
+# ── listeners ────────────────────────────────────────────────
+# 사설 IP 를 그대로 적는다. 호스트 이름을 적으면 클라이언트가 부트스트랩
+# 응답의 주소로 다시 접속할 때 ops 노드에서 이름을 풀지 못해 전부 막힌다.
+listeners=PLAINTEXT://{{ ansible_host }}:{{ kafka_client_port }},CONTROLLER://{{ ansible_host }}:{{ kafka_controller_port }}
+advertised.listeners=PLAINTEXT://{{ ansible_host }}:{{ kafka_client_port }}
+listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+inter.broker.listener.name=PLAINTEXT
+
+# ── 저장 ─────────────────────────────────────────────────────
+# 데이터 디스크의 마운트 지점이다. OS 디스크가 아니다.
+log.dirs={{ kafka_log_dir }}
+
+# ── 토픽 기본값 ──────────────────────────────────────────────
+# 실습 토픽은 명령에서 값을 명시하므로 이 값에 기대지 않는다.
+num.partitions={{ kafka_num_partitions }}
+default.replication.factor={{ kafka_default_replication_factor }}
+
+# 내부 토픽도 브로커 3대에 복제한다. 기본값 1로 두면 그 브로커가 죽는 순간
+# 모든 컨슈머 그룹이 오프셋을 잃는다.
+offsets.topic.replication.factor=3
+transaction.state.log.replication.factor=3
+transaction.state.log.min.isr=2
+
+# 오타 난 토픽 이름으로 consume 했을 때 그 이름의 토픽이 조용히 생기는 것을 막는다.
+auto.create.topics.enable={{ kafka_auto_create_topics | lower }}
+
+# ── retention 판정 주기 ──────────────────────────────────────
+# 보관 기간이 지난 세그먼트를 지울지 판정하는 주기다. 지우는 조건이 아니라
+# 조건을 언제 확인하느냐를 정한다.
+#
+# 제품 기본값은 300000 이다. 그대로 두면 retention.ms 를 짧게 걸어도 삭제를
+# 한 번 확인하는 데 최대 5분을 기다린다. retention 실습이 「지워지는 것을
+# 본다」이므로 판정 주기를 실습에서 거는 retention.ms 와 같은 값으로 낮춘다.
+#
+# 낮춘 대가는 이 값이 제품 기본값과 다르다는 것이다. 현장 클러스터에서
+# 같은 속도를 기대하면 안 된다. 제품 기본값은 300000 이다.
+log.retention.check.interval.ms={{ kafka_retention_check_interval_ms }}
+
+# 선호 리더 재배치를 컨트롤러가 스스로 돌리지 않게 한다.
+#
+# 기본값은 true 다. 브로커를 정지시켰다가 되살리는 실습에서 5분쯤 뒤에 배치가
+# 저절로 돌아오면, 「자동으로 원복되지 않는다」를 보여 주려던 단계가
+# 아무것도 바뀌지 않는 단계가 된다. 수강생이 직접 실행해 보게 두려고 끈다.
+auto.leader.rebalance.enable=false

@@ -1,0 +1,55 @@
+# 브로커 JVM 안에서 도는 JMX exporter 의 규칙.
+# Ansible 이 배포했다. 직접 고치면 다음 플레이북 실행에서 덮어쓴다.
+#
+# 전부 내지 않고 이 과정에서 쓰는 것만 고른다. Kafka 의 MBean 은 수천 개라
+# 그대로 열면 Prometheus 의 시계열 수가 폭발한다.
+
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+rules:
+  # 정확히 1이어야 한다. 0이면 메타데이터 변경이 멈춘다.
+  - pattern: "kafka.controller<type=KafkaController, name=ActiveControllerCount><>Value"
+    name: kafka_controller_active_controller_count
+    type: GAUGE
+
+  # 0이 아니면 즉시 확인. 가장 중요한 단일 지표다.
+  - pattern: "kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value"
+    name: kafka_server_under_replicated_partitions
+    type: GAUGE
+
+  # min.insync.replicas 를 못 채운 파티션 수. 이 값이 0이 아니면 produce 가 실패한다.
+  - pattern: "kafka.server<type=ReplicaManager, name=UnderMinIsrPartitionCount><>Value"
+    name: kafka_server_under_min_isr_partition_count
+    type: GAUGE
+
+  # 리더가 없는 파티션. 0이 아니면 그 파티션이 완전히 멈춘 것이다.
+  - pattern: "kafka.controller<type=KafkaController, name=OfflinePartitionsCount><>Value"
+    name: kafka_controller_offline_partitions_count
+    type: GAUGE
+
+  # ISR 축소·확장 횟수. 반복되면 네트워크나 디스크 문제다.
+  - pattern: "kafka.server<type=ReplicaManager, name=IsrShrinksPerSec><>Count"
+    name: kafka_server_isr_shrinks_total
+    type: COUNTER
+  - pattern: "kafka.server<type=ReplicaManager, name=IsrExpandsPerSec><>Count"
+    name: kafka_server_isr_expands_total
+    type: COUNTER
+
+  # 요청 처리 스레드의 유휴율. 낮으면 브로커가 포화된 것이다.
+  - pattern: "kafka.server<type=KafkaRequestHandlerPool, name=RequestHandlerAvgIdlePercent><>OneMinuteRate"
+    name: kafka_server_request_handler_avg_idle_percent
+    type: GAUGE
+
+  # 처리량. 용량 계획의 기준이다. 토픽별 값은 라벨 수가 늘어 전체 합만 받는다.
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count"
+    name: kafka_server_bytes_in_total
+    type: COUNTER
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count"
+    name: kafka_server_bytes_out_total
+    type: COUNTER
+
+  # 디스크 flush 지연. 스토리지 병목의 신호다.
+  - pattern: "kafka.log<type=LogFlushStats, name=LogFlushRateAndTimeMs><>Mean"
+    name: kafka_log_flush_time_ms_mean
+    type: GAUGE

@@ -1,0 +1,59 @@
+---
+# 세션 3 · Kafka 운영
+#
+#
+#   ansible -m ping all
+#   ansible-playbook play-kafka.yml
+#
+# ── 브로커를 한 대씩 다시 띄울 때 ────────────────────────────
+#   ansible-playbook play-kafka.yml --limit kafka-2
+#
+#   세 대를 한꺼번에 내리면 컨트롤러 쿼럼의 과반 2를 못 채워 메타데이터
+#   변경이 멈춘다. serial: 1 이 그것을 막지만, 한 대만 손볼 때는 --limit 가 낫다.
+
+# Kafka 는 세그먼트를 순차로 읽으므로 readahead 를 줄이면 손해다.
+# Redis·MongoDB 세션이 쓰는 축소값 대신 커널 기본값 128 KiB 를 그대로 둔다.
+- name: OS 튜닝과 디스크 마운트
+  hosts: kafka
+  become: true
+  vars:
+    data_mount_path: /var/lib/kafka
+    common_read_ahead_kb: 128
+  roles:
+    - common
+
+# serial: 1 이 없으면 세 노드를 동시에 재시작해 컨트롤러 쿼럼을 잃는다.
+# 그 순간 토픽 생성과 리더 교체가 전부 멈춘다.
+- name: Kafka 설치와 설정
+  hosts: kafka
+  become: true
+  serial: 1
+  vars:
+    kafka_target: server
+  roles:
+    - kafka
+
+# 이 세션의 모든 명령이 ops 노드에서 나간다. CLI 도구가 없으면 첫 실습부터 막힌다.
+- name: ops 노드 CLI 도구
+  hosts: ops
+  become: true
+  vars:
+    kafka_target: client
+  roles:
+    - kafka
+
+- name: exporter 설치
+  hosts: kafka
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: node
+      monitoring_service: kafka
+
+- name: 관측 스택 기동
+  hosts: ops
+  become: true
+  roles:
+    - role: monitoring
+      monitoring_target: server
+      monitoring_service: kafka
