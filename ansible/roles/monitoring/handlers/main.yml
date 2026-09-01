@@ -20,3 +20,9 @@
     name: kafka-exporter
     state: restarted
     daemon_reload: true
+
+- name: restart sentinel exporter
+  ansible.builtin.systemd:
+    name: redis-sentinel-exporter
+    state: restarted
+    daemon_reload: true

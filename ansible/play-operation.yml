@@ -257,6 +257,5 @@
     - role: monitoring
       monitoring_target: server
       monitoring_scrape_ops: true
-      # 둘 다 기본값은 꺼짐. 앞 세션 화면 유지
+      # 기본값은 꺼짐. 앞 세션 화면 유지
       monitoring_node_dashboard: true
-      monitoring_full_panels: true

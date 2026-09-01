@@ -49,6 +49,19 @@ scrape_configs:
         labels:
           service: {{ svc }}
 {% endfor %}
+{% if 'redis' in monitoring_present %}
+
+  # 26379 를 보는 두 번째 redis_exporter. Sentinel 이 내는 값은 6379 쪽 인스턴스에
+  # 나오지 않는다. Sentinel 기동 전에는 redis_up 이 0 으로 나오고 Target 은 UP 이다.
+  - job_name: redis_sentinel
+    static_configs:
+      - targets:
+{% for host in groups['redis'] %}
+          - "{{ hostvars[host].ansible_host }}:{{ redis_sentinel_exporter_port }}"
+{% endfor %}
+        labels:
+          service: redis
+{% endif %}
 {% if 'kafka' in monitoring_present %}
 
   # 브로커 JVM 안의 java agent. kafka_exporter 가 내지 않는 MBean 값이 여기서 나온다.

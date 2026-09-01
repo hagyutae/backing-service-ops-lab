@@ -35,6 +35,10 @@ monitoring_catalog:
 # play-operation.yml 이 ops 에 node_exporter 를 깔고 이 값을 켠다.
 monitoring_scrape_ops: false
 
+# 같은 exporter 를 26379 에 하나 더 붙일 때 쓰는 포트.
+# 6379 를 보는 인스턴스가 9121 을 쓰므로 겹치지 않는 값을 둔다.
+redis_sentinel_exporter_port: 9122
+
 # Percona 가 배포하는 mongodb_exporter. Ubuntu 저장소에 패키지가 없어 바이너리를 쓴다.
 mongodb_exporter_version: "0.43.1"
 
@@ -59,42 +63,19 @@ kafka_exporter_port: 9308
 # 근거가 된다. play-operation.yml 이 이 값을 켠다.
 monitoring_node_dashboard: false
 
-# ── 대시보드를 어느 범위로 올릴지 ─────────────────────────────
-# 세션 1 부터 세션 3 은 그 세션이 가르친 지표만 본다. 여기서 패널을 늘리면
-# 앞 세션의 실습 절차와 화면이 어긋난다. 세션 1 의 Grafana 확인 단계는
-# Redis 지표 두 패널을 완료 판정으로 쓴다.
-#
-# 세션 4 는 세 서비스의 지표를 전부 다루고 알람 임계값과 RB-OBS 의 정상 범위가
-# 그 화면에서 나온다. play-operation.yml 이 이 값을 켠다.
-monitoring_full_panels: false
-
 # ── Redis 대시보드 패널 ───────────────────────────────────────
 # 커리큘럼 「Redis 핵심 지표」를 전부 화면에 올린다. 여기 한 줄이 패널 하나다.
 # templates/redis-lab.json.j2 가 이 목록을 돌며 JSON 을 만든다. JSON 을 손대지 않는다.
 #
-# 세션 1 부터 세션 3 이 보는 목록. 세션 4 는 아래 full 목록으로 덮인다.
-redis_panels_basic:
-  - title: 노드 CPU 사용률
-    expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
-    unit: percent
-  - title: 노드 메모리 사용률
-    expr: "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
-    unit: percent
-  - title: Redis used_memory
-    expr: redis_memory_used_bytes
-    unit: bytes
-  - title: Redis 연결 수
-    expr: redis_connected_clients
-
-# 세션 4 가 보는 목록.
+# 네 세션이 같은 목록을 본다. 세션 1 의 실습에서 값이 움직이는 지표가 그 자리에서
+# 화면에도 보여야 한다.
 #
-# 지표 이름은 oliver006/redis_exporter 소스에서 확인한 것만 쓴다.
+# 지표 이름은 3회차에서 실측한 notes/verification/metric-names-r3.md 를 따른다.
 # INFO 필드 이름과 다른 것이 많다. sync_full 은 replica_resyncs_full 이다.
 #
 # maxmemory_policy 는 redis_instance_info 의 label 로 나온다. 값이 아니라
 # label 이라 패널로 그리지 않고 role 과 함께 질의를 좁히는 데 쓴다.
-# Sentinel 시각은 여기 없다. exporter 를 26379 에 따로 붙여야 나온다.
-redis_panels_full:
+redis_dashboard_panels:
   - title: 노드 CPU 사용률
     expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
     unit: percent
@@ -149,6 +130,19 @@ redis_panels_full:
     unit: s
   - title: Redis 기동 여부 (redis_up)
     expr: redis_up
+  # ── Sentinel ────────────────────────────────────────────────
+  # 26379 를 보는 두 번째 exporter 가 내는 값이다. 세션 1 의 챕터 08 에서
+  # 수강생이 Sentinel 을 기동하기 전까지는 비어 있다.
+  - title: Sentinel 이 보는 master 상태 (0=정상)
+    expr: redis_sentinel_master_status
+  - title: master 를 정상으로 보는 Sentinel 수
+    expr: redis_sentinel_master_ok_sentinels
+  - title: master 를 정상으로 보는 replica 수
+    expr: redis_sentinel_master_ok_slaves
+  - title: 설정된 quorum
+    expr: redis_sentinel_master_setting_ck_quorum
+  - title: Sentinel 연결 여부
+    expr: 'redis_up{job="redis_sentinel"}'
 
 # ── Kafka 대시보드 패널 ───────────────────────────────────────
 # 챕터 10 이 가르치는 지표를 전부 올린다. Redis 와 같은 방식이다.
@@ -260,8 +254,3 @@ mongodb_dashboard_panels:
     expr: "rate(mongodb_ss_metrics_operation_scanAndOrder[5m])"
   - title: 검사한 문서 수 증가율
     expr: "rate(mongodb_ss_metrics_queryExecutor_scanned[5m])"
-
-# ── 세션에 따라 목록을 고른다 ─────────────────────────────────
-# 템플릿은 *_dashboard_panels 만 본다. 어느 목록이 들어갈지는 여기서 정한다.
-# Kafka 와 MongoDB 는 세션 3·2 의 대시보드를 따로 두지 않았으므로 그대로 쓴다.
-redis_dashboard_panels: "{{ redis_panels_full if monitoring_full_panels else redis_panels_basic }}"

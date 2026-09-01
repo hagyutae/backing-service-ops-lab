@@ -42,6 +42,54 @@
     enabled: true
     state: started
 
+# ── Sentinel 용 exporter ─────────────────────────────────────
+# 같은 exporter 를 26379 에 하나 더 붙인다. 6379 에 붙은 인스턴스는 Sentinel 이
+# 내는 값을 알지 못한다. 감시 대상 수·정상으로 보는 Sentinel 수·quorum 은
+# Sentinel 자신에게 물어야 나온다.
+#
+# 패키지가 설치한 유닛은 6379 를 본다. 그 유닛을 고치지 않고 두 번째 유닛을 둔다.
+#
+# 실행 파일 이름이 배포판에 따라 갈려 경로를 찾아서 쓴다.
+- name: redis exporter 실행 파일 경로
+  when: monitoring_target == "node" and monitoring_service == "redis"
+  ansible.builtin.command:
+    cmd: sh -c 'command -v redis_exporter || command -v prometheus-redis-exporter'
+  register: redis_exporter_bin
+  changed_when: false
+
+# Sentinel 은 세션 1 의 챕터 08 에서 수강생이 기동한다. 그전까지 이 exporter 는
+# 26379 에 붙지 못하지만, 붙지 못한 것을 redis_up 0 으로 내보내고 스크레이프
+# 자체는 성공한다. Prometheus 의 Targets 는 UP 으로 남는다.
+- name: sentinel exporter 유닛
+  when: monitoring_target == "node" and monitoring_service == "redis"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/redis-sentinel-exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Redis Exporter for Sentinel
+      After=network-online.target
+
+      [Service]
+      Type=simple
+      ExecStart={{ redis_exporter_bin.stdout }} \
+        --redis.addr=redis://127.0.0.1:{{ sentinel_port }} \
+        --web.listen-address=:{{ redis_sentinel_exporter_port }}
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart sentinel exporter
+
+- name: sentinel exporter 기동
+  when: monitoring_target == "node" and monitoring_service == "redis"
+  ansible.builtin.systemd:
+    name: redis-sentinel-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+
 # ── MongoDB ──────────────────────────────────────────────────
 # Ubuntu 저장소에 패키지가 없다. Percona 가 배포하는 바이너리를 내려받는다.
 - name: mongodb exporter 내려받기
