@@ -228,30 +228,60 @@ mongodb_dashboard_panels:
   - title: 복제 지연 (PRIMARY 대비 optimeDate 차)
     expr: '(max by (rs_nm) (mongodb_members_optimeDate{rs_state="1", member_state="PRIMARY"} > 0) - on(rs_nm) group_right() max by (rs_nm, member_idx) (mongodb_members_optimeDate{rs_state="1"} > 0)) / 1000'
     unit: s
+  - title: 멤버 상태 (1=PRIMARY · 2=SECONDARY)
+    expr: mongodb_members_state
   - title: 연결 수 (current)
     expr: 'mongodb_ss_connections{conn_type="current"}'
   - title: 남은 연결 수 (available)
     expr: 'mongodb_ss_connections{conn_type="available"}'
+  - title: 캐시 상한 (maximum bytes configured)
+    expr: mongodb_ss_wt_cache_maximum_bytes_configured
+    unit: bytes
   - title: WiredTiger 캐시 사용량
     expr: mongodb_ss_wt_cache_bytes_currently_in_the_cache
     unit: bytes
   - title: WiredTiger dirty 바이트
     expr: mongodb_ss_wt_cache_tracked_dirty_bytes_in_the_cache
     unit: bytes
+  # 실습이 임계값 80% · 5% 와 대조하는 두 비율이다. 분모는 둘 다 캐시 상한이다.
+  - title: 캐시 사용률 (임계값 80%)
+    expr: "mongodb_ss_wt_cache_bytes_currently_in_the_cache / mongodb_ss_wt_cache_maximum_bytes_configured"
+    unit: percentunit
+  - title: dirty 비율 (임계값 5%)
+    expr: "mongodb_ss_wt_cache_tracked_dirty_bytes_in_the_cache / mongodb_ss_wt_cache_maximum_bytes_configured"
+    unit: percentunit
   - title: 캐시로 읽어 들인 바이트 증가율
     expr: "rate(mongodb_ss_wt_cache_bytes_read_into_cache[5m])"
     unit: Bps
+  - title: 캐시로 올린 페이지 수 증가율
+    expr: "rate(mongodb_ss_wt_cache_pages_read_into_cache[5m])"
+  - title: 요청 스레드의 eviction 시도 증가율
+    expr: "rate(mongodb_ss_wt_cache_page_evict_attempts_by_application_threads[5m])"
+  - title: 요청 스레드가 eviction 에 쓴 시간 (usecs 증가율)
+    expr: "rate(mongodb_ss_wt_cache_application_thread_time_evicting_usecs[5m])"
   # (실측) exporter 가 이 값만 전용 collector 로 따로 내보낸다. 경로를 그대로
   # 옮긴 mongodb_ss_queues_execution_* 라는 이름은 존재하지 않는다.
   # label 이름도 txn_rw_type 이 아니라 txn_rw 다.
+  - title: 전체 슬롯 수 (totalTickets)
+    expr: mongodb_ss_wt_concurrentTransactions_totalTickets
   - title: 읽기 슬롯 잔량 (queues.execution.read.available)
     expr: 'mongodb_ss_wt_concurrentTransactions_available{txn_rw="read"}'
   - title: 쓰기 슬롯 잔량 (queues.execution.write.available)
     expr: 'mongodb_ss_wt_concurrentTransactions_available{txn_rw="write"}'
   # (실측) currentQueue 바로 아래가 스칼라라 count_type label 로 갈린다
+  - title: 읽기 슬롯 사용 중 (queues.execution.read.out)
+    expr: 'mongodb_ss_wt_concurrentTransactions_out{txn_rw="read"}'
+  - title: 쓰기 슬롯 사용 중 (queues.execution.write.out)
+    expr: 'mongodb_ss_wt_concurrentTransactions_out{txn_rw="write"}'
+  - title: 쓰기 충돌 증가율 (writeConflicts)
+    expr: "rate(mongodb_ss_metrics_operation_writeConflicts[5m])"
   - title: 대기 큐 (globalLock.currentQueue)
     expr: 'mongodb_ss_globalLock_currentQueue{count_type="total"}'
   - title: 정렬용 인덱스 없는 질의 (scanAndOrder)
     expr: "rate(mongodb_ss_metrics_operation_scanAndOrder[5m])"
-  - title: 검사한 문서 수 증가율
+  # scanned 는 인덱스 키, scannedObjects 가 문서다. 인덱스 실습이 explain 의
+  # totalKeysExamined 와 totalDocsExamined 를 구분해 가르치므로 화면도 나눈다.
+  - title: 검사한 인덱스 키 수 증가율 (totalKeysExamined 계열)
     expr: "rate(mongodb_ss_metrics_queryExecutor_scanned[5m])"
+  - title: 검사한 문서 수 증가율 (totalDocsExamined 계열)
+    expr: "rate(mongodb_ss_metrics_queryExecutor_scannedObjects[5m])"
