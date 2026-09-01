@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 과반 상실 재현.
 #
-# ops-1 의 ~/ansible 에서 돌린다. 인벤토리가 거기 있어야 ansible 이 노드를 찾는다.
+# ops-1 에서 돌린다. 어느 디렉터리에서 돌려도 된다.
 #
 #   MONGO_HOST=10.0.1.5 ~/loadgen/wc-majority-loss.sh
 #
@@ -52,6 +52,12 @@
 # 두 노드를 내린 채로 끝나면 다음 챕터가 전부 막힌다. trap 으로 어떤 경로로
 # 끝나든 되살린다.
 set -uo pipefail
+
+# ansible.cfg 는 그 디렉터리에서 돌 때만 읽힌다. 이 스크립트는 홈에서 실행되므로
+# 경로를 못 찾고, 인벤토리도 host_key_checking 설정도 잡히지 않는다. 두 경로를
+# 여기서 못박아 어느 디렉터리에서 돌려도 같게 동작하게 한다.
+export ANSIBLE_CONFIG="${ANSIBLE_CONFIG:-$HOME/ansible/ansible.cfg}"
+export ANSIBLE_INVENTORY="${ANSIBLE_INVENTORY:-$HOME/ansible/inventory/hosts.ini}"
 
 HOST="${MONGO_HOST:?MONGO_HOST 를 지정한다. 현재 PRIMARY 여야 한다. 예: MONGO_HOST=10.0.1.5}"
 PORT="${MONGO_PORT:-27017}"
