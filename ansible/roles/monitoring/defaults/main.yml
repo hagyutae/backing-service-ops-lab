@@ -133,14 +133,15 @@ redis_dashboard_panels:
   # ── Sentinel ────────────────────────────────────────────────
   # 26379 를 보는 두 번째 exporter 가 내는 값이다. 세션 1 의 챕터 08 에서
   # 수강생이 Sentinel 을 기동하기 전까지는 비어 있다.
-  - title: Sentinel 이 보는 master 상태 (0=정상)
+  # 이름은 2026-09-01 에 9122 에서 실측했다.
+  - title: Sentinel 이 보는 master 상태 (1=ok)
     expr: redis_sentinel_master_status
   - title: master 를 정상으로 보는 Sentinel 수
     expr: redis_sentinel_master_ok_sentinels
   - title: master 를 정상으로 보는 replica 수
     expr: redis_sentinel_master_ok_slaves
-  - title: 설정된 quorum
-    expr: redis_sentinel_master_setting_ck_quorum
+  - title: quorum 충족 여부 (SENTINEL ckquorum)
+    expr: redis_sentinel_master_ckquorum_status
   - title: Sentinel 연결 여부
     expr: 'redis_up{job="redis_sentinel"}'
 
