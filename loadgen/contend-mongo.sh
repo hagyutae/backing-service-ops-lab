@@ -55,8 +55,11 @@ mongosh "$URI" --quiet "${AUTH_ARGS[@]}" --eval \
   "db.getCollection('${COLL}').updateOne({_id:1},{\$setOnInsert:{n:0}},{upsert:true})" >/dev/null
 
 # 부하 전 충돌 누계. serverStatus 는 어느 데이터베이스에서 읽어도 값이 같다.
+#
+# Number() 로 감싸는 이유는 이 값이 64비트 정수라 mongosh 가 Long('0') 형태로
+# 찍기 때문이다. 그대로 받으면 아래 awk 가 숫자로 읽지 못해 증가분이 0 이 된다.
 before=$(mongosh "$URI" --quiet "${AUTH_ARGS[@]}" --eval \
-  "db.serverStatus().metrics.operation.writeConflicts")
+  "Number(db.serverStatus().metrics.operation.writeConflicts)")
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -81,7 +84,7 @@ wait
 END=$(date +%s.%N)
 
 after=$(mongosh "$URI" --quiet "${AUTH_ARGS[@]}" --eval \
-  "db.serverStatus().metrics.operation.writeConflicts")
+  "Number(db.serverStatus().metrics.operation.writeConflicts)")
 
 # 워커가 각자 찍은 갱신 횟수를 더한다.
 updates=$(cat "${WORKDIR}"/w* 2>/dev/null | awk '{s+=$1} END {print s+0}')
