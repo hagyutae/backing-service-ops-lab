@@ -20,5 +20,5 @@
 subscription_id     = "00000000-0000-0000-0000-000000000000"
 resource_group_name = "rkm-student07-rg"
 location            = "koreacentral"
-allowed_cidrs       = ["203.0.113.10/32"]
+allowed_cidrs       = ["xxx.xxx.xxx.xxx/32"]
 ssh_public_key_path = "~/.ssh/rkm.pub"
