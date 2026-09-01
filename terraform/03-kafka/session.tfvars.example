@@ -19,7 +19,7 @@
 #             Azure 는 RSA 2048비트 이상과 ED25519 를 받는다. 이 과정은 RSA 4096 으로 통일
 
 subscription_id     = "00000000-0000-0000-0000-000000000000"
-resource_group_name = "rkm-student07-kafka-rg"
+resource_group_name = "rkm-<계정 이름>-kafka-rg"
 location            = "koreacentral"
 allowed_cidrs       = ["xxx.xxx.xxx.xxx/32"]
 ssh_public_key_path = "~/.ssh/rkm.pub"
