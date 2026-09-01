@@ -85,7 +85,7 @@ redis_dashboard_panels:
   - title: 메모리 사용률 (used ÷ maxmemory)
     expr: "redis_memory_used_bytes / redis_memory_max_bytes"
     unit: percentunit
-  - title: used_memory
+  - title: 사용 메모리 (used_memory)
     expr: redis_memory_used_bytes
     unit: bytes
   - title: 메모리 단편화 (mem_fragmentation_ratio)
@@ -101,7 +101,7 @@ redis_dashboard_panels:
     expr: redis_latest_fork_seconds
   - title: 마지막 스냅샷 성공 여부 (rdb_last_bgsave_status)
     expr: redis_rdb_last_bgsave_status
-  - title: 마지막 저장 이후 변경 수
+  - title: 마지막 저장 이후 변경 수 (rdb_changes_since_last_save)
     expr: redis_rdb_changes_since_last_save
   - title: AOF 쓰기 성공 여부 (aof_last_write_status)
     expr: redis_aof_last_write_status
@@ -109,7 +109,7 @@ redis_dashboard_panels:
     expr: redis_connected_slaves
   - title: master 연결 상태 (master_link_up)
     expr: redis_master_link_up
-  - title: 복제 offset 차
+  - title: 복제 offset 차 (slave offset 의 최대와 최소 차)
     expr: "max(redis_connected_slave_offset_bytes) - min(redis_connected_slave_offset_bytes)"
     unit: bytes
   - title: 전체 재동기화 (sync_full)
@@ -125,7 +125,7 @@ redis_dashboard_panels:
     expr: "rate(redis_rejected_connections_total[5m])"
   - title: 처리량 (초당 명령 수)
     expr: "rate(redis_commands_processed_total[5m])"
-  - title: 명령별 평균 지연
+  - title: 명령별 평균 지연 (commandstats 의 usec ÷ calls)
     expr: "rate(redis_commands_duration_seconds_total[5m]) / clamp_min(rate(redis_commands_total[5m]), 1)"
     unit: s
   - title: Redis 기동 여부 (redis_up)
@@ -136,13 +136,13 @@ redis_dashboard_panels:
   # 이름은 2026-09-01 에 9122 에서 실측했다.
   - title: Sentinel 이 보는 master 상태 (1=ok)
     expr: redis_sentinel_master_status
-  - title: master 를 정상으로 보는 Sentinel 수
+  - title: 정상으로 보는 Sentinel 수 (SENTINEL master 의 num-other-sentinels 계열)
     expr: redis_sentinel_master_ok_sentinels
-  - title: master 를 정상으로 보는 replica 수
+  - title: 정상으로 보는 replica 수 (SENTINEL master 의 num-slaves 계열)
     expr: redis_sentinel_master_ok_slaves
   - title: quorum 충족 여부 (SENTINEL ckquorum)
     expr: redis_sentinel_master_ckquorum_status
-  - title: Sentinel 연결 여부
+  - title: Sentinel 연결 여부 (26379 exporter 의 redis_up)
     expr: 'redis_up{job="redis_sentinel"}'
 
 # ── Kafka 대시보드 패널 ───────────────────────────────────────
@@ -164,9 +164,9 @@ kafka_dashboard_panels:
     expr: kafka_controller_offline_partitions_count
   - title: ActiveControllerCount
     expr: kafka_controller_active_controller_count
-  - title: ISR 축소 횟수
+  - title: ISR 축소 횟수 (IsrShrinksPerSec)
     expr: "rate(kafka_server_isr_shrinks_total[5m])"
-  - title: ISR 확장 횟수
+  - title: ISR 확장 횟수 (IsrExpandsPerSec)
     expr: "rate(kafka_server_isr_expands_total[5m])"
   - title: 요청 처리 스레드 여유 (RequestHandlerAvgIdlePercent)
     expr: kafka_server_request_handler_avg_idle_percent
@@ -177,14 +177,14 @@ kafka_dashboard_panels:
   - title: 유출 처리량 (BytesOutPerSec)
     expr: "rate(kafka_server_bytes_out_total[5m])"
     unit: Bps
-  - title: 디스크 flush 지연
+  - title: 디스크 flush 지연 (LogFlushRateAndTimeMs)
     expr: kafka_log_flush_time_ms_mean
     unit: ms
-  - title: Consumer Group 별 Lag
+  - title: Consumer Group 별 Lag (consumergroup_lag_sum)
     expr: kafka_consumergroup_lag_sum
-  - title: Partition 별 ISR 수
+  - title: Partition 별 ISR 수 (topic_partition_in_sync_replica)
     expr: kafka_topic_partition_in_sync_replica
-  - title: Topic 별 Partition 수
+  - title: Topic 별 Partition 수 (topic_partitions)
     expr: kafka_topic_partitions
   - title: 데이터 디스크 사용량
     expr: 'node_filesystem_size_bytes{mountpoint="/var/lib/kafka"} - node_filesystem_avail_bytes{mountpoint="/var/lib/kafka"}'
@@ -228,7 +228,7 @@ mongodb_dashboard_panels:
   - title: 복제 지연 (PRIMARY 대비 optimeDate 차)
     expr: '(max by (rs_nm) (mongodb_members_optimeDate{rs_state="1", member_state="PRIMARY"} > 0) - on(rs_nm) group_right() max by (rs_nm, member_idx) (mongodb_members_optimeDate{rs_state="1"} > 0)) / 1000'
     unit: s
-  - title: 멤버 상태 (1=PRIMARY · 2=SECONDARY)
+  - title: 멤버 상태 (rs.status() 의 state · 1=PRIMARY · 2=SECONDARY)
     expr: mongodb_members_state
   - title: 연결 수 (current)
     expr: 'mongodb_ss_connections{conn_type="current"}'
@@ -237,10 +237,10 @@ mongodb_dashboard_panels:
   - title: 캐시 상한 (maximum bytes configured)
     expr: mongodb_ss_wt_cache_maximum_bytes_configured
     unit: bytes
-  - title: WiredTiger 캐시 사용량
+  - title: 캐시 사용량 (bytes currently in the cache)
     expr: mongodb_ss_wt_cache_bytes_currently_in_the_cache
     unit: bytes
-  - title: WiredTiger dirty 바이트
+  - title: dirty 바이트 (tracked dirty bytes in the cache)
     expr: mongodb_ss_wt_cache_tracked_dirty_bytes_in_the_cache
     unit: bytes
   # 실습이 임계값 80% · 5% 와 대조하는 두 비율이다. 분모는 둘 다 캐시 상한이다.
@@ -250,12 +250,12 @@ mongodb_dashboard_panels:
   - title: dirty 비율 (임계값 5%)
     expr: "mongodb_ss_wt_cache_tracked_dirty_bytes_in_the_cache / mongodb_ss_wt_cache_maximum_bytes_configured"
     unit: percentunit
-  - title: 캐시로 읽어 들인 바이트 증가율
+  - title: 캐시로 읽어 들인 바이트 (bytes read into cache 증가율)
     expr: "rate(mongodb_ss_wt_cache_bytes_read_into_cache[5m])"
     unit: Bps
-  - title: 캐시로 올린 페이지 수 증가율
+  - title: 캐시로 올린 페이지 수 (pages read into cache 증가율)
     expr: "rate(mongodb_ss_wt_cache_pages_read_into_cache[5m])"
-  - title: 요청 스레드의 eviction 시도 증가율
+  - title: 요청 스레드의 eviction 시도 (page evict attempts by application threads)
     expr: "rate(mongodb_ss_wt_cache_page_evict_attempts_by_application_threads[5m])"
   - title: 요청 스레드가 eviction 에 쓴 시간 (usecs 증가율)
     expr: "rate(mongodb_ss_wt_cache_application_thread_time_evicting_usecs[5m])"
