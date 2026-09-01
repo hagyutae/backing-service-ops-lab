@@ -6,12 +6,12 @@ variable "subscription_id" {
 # 구독을 20명이 공유한다. 이름이 겹치면 남의 그룹에 자원을 얹게 되고,
 # 전원이 소유자 권한이라 destroy 가 남의 것까지 지운다. 형식을 강제한다.
 variable "resource_group_name" {
-  description = "rkm-<계정 이름>-rg. 전달받은 계정이 student07 이면 rkm-student07-rg."
+  description = "rkm-<계정 이름>-redis-rg. 전달받은 계정이 student07 이면 rkm-student07-redis-rg."
   type        = string
 
   validation {
-    condition     = can(regex("^rkm-[a-z0-9]+-rg$", var.resource_group_name))
-    error_message = "rkm-<계정 이름>-rg 형식이어야 한다. 다른 수강생의 그룹을 건드리지 않게 막는다."
+    condition     = can(regex("^rkm-[a-z0-9]+-redis-rg$", var.resource_group_name))
+    error_message = "rkm-<계정 이름>-redis-rg 형식이어야 한다. 다른 수강생의 그룹을 건드리지 않게 막는다."
   }
 }
 
