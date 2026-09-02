@@ -8,15 +8,11 @@ output "ssh_command" {
   value       = "ssh -i ~/.ssh/rkm azureuser@${module.ops.public_ip}"
 }
 
-# ── 스택을 만든 뒤 이것을 받아 ops 노드에 배치한다 ───────────
-# cloud-init 은 부팅할 때 한 번만 돈다. 인벤토리를 거기 넣으면 ops 노드가
-# 다시 만들어질 때 그때까지 쓴 런북이 사라진다.
-# 그래서 인벤토리를 output 으로 낸다.
+# ── cloud-init 이 이미 배치했다 ──────────────────────────────
+# ops 노드가 부팅할 때 이 값이 그대로 인벤토리 자리에 들어간다.
+# 이 output 은 인벤토리를 손으로 고친 뒤 원본을 다시 볼 때 쓴다.
 #
-#   terraform output -raw inventory > hosts.ini
-#   scp -i ~/.ssh/rkm hosts.ini azureuser@<ops 공인 IP>:~/lab/ansible/inventory/hosts.ini
-#
-# 갱신하지 않으면 플레이북이 사라진 노드를 찾다가 그 자리에서 멈춘다.
+#   terraform output -raw inventory
 output "inventory" {
   description = "ops 노드에 배치할 Ansible 인벤토리. 세 서비스 그룹이 모두 들어 있다."
   value       = local.inventory

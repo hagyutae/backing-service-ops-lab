@@ -18,36 +18,39 @@
 # 세 서비스가 동시에 존재하므로 주소를 겹쳐 쓸 수 없다.
 #
 #   10.0.1.4        ops-1
-#   10.0.1.5 .. 7   redis-1·2·3
-#   10.0.1.8 .. 10  mongo-1·2·3
-#   10.0.1.11 .. 13 kafka-1·2·3
+#   10.0.1.5 .. 7   kafka-1·2·3
+#   10.0.1.8 .. 10  redis-1·2·3
+#   10.0.1.11 .. 13 mongo-1·2·3
 #
-# ── 인벤토리는 output 으로 낸다 ──────────────────────────────
-# cloud-init 은 부팅할 때 한 번만 돈다. 인벤토리를 거기 넣으면 ops 노드가
-# 다시 만들어질 때 수강생이 써 둔 런북과 기록이 사라진다.
+# Kafka 를 앞에 둔다. 세션 3 슬라이드가 Broker 주소를 10.0.1.5 부터로
+# 적고 있어 그 명령이 이 스택에서 그대로 통해야 한다.
+#
+# ── 인벤토리는 cloud-init 이 배치한다 ────────────────────────
+# 세 서비스가 한 번에 올라오고 노드 구성이 세션 내내 바뀌지 않는다.
+# 그래서 세션 1 부터 세션 3 과 같은 방식이 그대로 통한다.
 #
 locals {
   prefix = "ops"
 
   # 영역 하나가 통째로 사라져도 2대가 남아 과반을 유지한다.
   redis_nodes = {
-    "redis-1" = { zone = "1", ip = "10.0.1.5" }
-    "redis-2" = { zone = "2", ip = "10.0.1.6" }
-    "redis-3" = { zone = "3", ip = "10.0.1.7" }
+    "redis-1" = { zone = "1", ip = "10.0.1.8" }
+    "redis-2" = { zone = "2", ip = "10.0.1.9" }
+    "redis-3" = { zone = "3", ip = "10.0.1.10" }
   }
 
   mongo_nodes = {
-    "mongo-1" = { zone = "1", ip = "10.0.1.8" }
-    "mongo-2" = { zone = "2", ip = "10.0.1.9" }
-    "mongo-3" = { zone = "3", ip = "10.0.1.10" }
+    "mongo-1" = { zone = "1", ip = "10.0.1.11" }
+    "mongo-2" = { zone = "2", ip = "10.0.1.12" }
+    "mongo-3" = { zone = "3", ip = "10.0.1.13" }
   }
 
   # node_id 는 controller.quorum.voters 와 각 노드의 node.id 에 함께 들어간다.
   # 둘이 어긋나면 브로커가 기동 직후 종료한다.
   kafka_nodes = {
-    "kafka-1" = { zone = "1", ip = "10.0.1.11", node_id = 1 }
-    "kafka-2" = { zone = "2", ip = "10.0.1.12", node_id = 2 }
-    "kafka-3" = { zone = "3", ip = "10.0.1.13", node_id = 3 }
+    "kafka-1" = { zone = "1", ip = "10.0.1.5", node_id = 1 }
+    "kafka-2" = { zone = "2", ip = "10.0.1.6", node_id = 2 }
+    "kafka-3" = { zone = "3", ip = "10.0.1.7", node_id = 3 }
   }
 
   # ── 인벤토리에 세 그룹을 모두 담는다 ───────────────────────
@@ -73,10 +76,7 @@ locals {
 
   inventory = <<-INV
     # 세션 4 · 장애대응 · 모니터링 인벤토리
-    # Terraform 이 만들었다. 스택을 만든 뒤 한 번 받아 배치한다.
-    #
-    #   terraform output -raw inventory
-    #
+    # Terraform 이 만들어 cloud-init 이 배치했다.
     # Redis · MongoDB · Kafka 세 그룹이 모두 들어 있다.
 
     ${local.redis_group}${local.mongo_group}${local.kafka_group}[ops]
@@ -91,7 +91,7 @@ locals {
 
     # sentinel.conf.j2 가 이 둘을 읽는다. 없으면 Sentinel play 가 실패한다.
     # master 는 redis-1 이고, Sentinel 3대이므로 과반은 2다.
-    redis_master_host=10.0.1.5
+    redis_master_host=10.0.1.8
     sentinel_quorum=2
     mongodb_port=27017
     mongodb_replset_name=rs0
@@ -197,15 +197,10 @@ module "ops" {
   ssh_public_key      = file(pathexpand(var.ssh_public_key_path))
   tags                = var.tags
 
-  # ── cloud-init 에 인벤토리를 넣지 않는다 ────────────────────
-  # Azure 는 custom_data 가 바뀌면 VM 을 새로 만든다. 인벤토리를 여기 넣으면
-  # 단계를 전환하는 순간 ops 노드가 통째로 다시 만들어져, 수강생이 그때까지
-  # 쓴 런북과 적어 둔 값이 전부 사라진다. 세션 2 1회차 검증에서 같은 이유로
-  # 덤프 파일이 날아갔고, 그 스택은 인벤토리를 고정해 피했다.
-  #
-  # 이 세션은 단계가 세 번 바뀌므로 고정으로는 안 된다. 그래서 cloud-init 은
-  # 빈 인벤토리 자리만 만들고, 실제 내용은 output 으로 받아 덮어쓴다.
-  # 단계마다 있는 플레이북 실행 절차가 그 덮어쓰기부터 시작한다.
+  # ── 인벤토리를 함께 넣는다 ──────────────────────────────────
+  # Azure 는 custom_data 가 바뀌면 VM 을 새로 만든다. 인벤토리는 위 locals 의
+  # 고정된 이름과 IP 로만 만들어지므로 apply 를 다시 돌려도 값이 같고,
+  # ops 노드가 다시 만들어지지 않는다. 이 세션에는 노드를 늘리는 실습도 없다.
   custom_data = <<-EOT
     #cloud-config
     package_update: true
@@ -220,9 +215,16 @@ module "ops" {
         defer: true
         content: |
           ${indent(6, tls_private_key.lab.private_key_openssh)}
+      - path: /home/azureuser/hosts.ini
+        owner: azureuser:azureuser
+        permissions: "0644"
+        defer: true
+        content: |
+          ${indent(6, local.inventory)}
 
     runcmd:
       - [su, azureuser, -c, "git clone --depth 1 ${var.lab_repo_url} /home/azureuser/lab"]
+      - [su, azureuser, -c, "cp /home/azureuser/hosts.ini /home/azureuser/lab/ansible/inventory/hosts.ini"]
       - [su, azureuser, -c, "ln -sfn /home/azureuser/lab/ansible /home/azureuser/ansible"]
       - [su, azureuser, -c, "ln -sfn /home/azureuser/lab/loadgen /home/azureuser/loadgen"]
       - [su, azureuser, -c, "ln -sfn /home/azureuser/lab/scenarios /home/azureuser/scenarios"]
