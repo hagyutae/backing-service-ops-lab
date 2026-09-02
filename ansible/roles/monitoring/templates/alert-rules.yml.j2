@@ -18,7 +18,7 @@
 #   expr                  참이면 조건 충족
 #   for                   그 시간만큼 계속 참이어야 발동
 #   labels.severity       page / ticket / dashboard 중 하나
-#   annotations.runbook   받은 사람이 어느 런북을 펼지
+#   annotations.summary   알람 목록에 보일 한 줄
 
 groups:
   - name: lab
@@ -37,7 +37,6 @@ groups:
           severity: ticket
         annotations:
           summary: "{% raw %}{{ $labels.instance }} 의 {{ $labels.mountpoint }} 가 24시간 안에 찹니다{% endraw %}"
-          runbook: "RB-OBS"
 
       # ── 여기부터 수강생이 채운다 ─────────────────────────────
       #
@@ -49,19 +48,14 @@ groups:
       #       severity: ...
       #     annotations:
       #       summary: "..."
-      #       runbook: "RB-R02"
       #
       # Redis replica 수
-      #   runbook: "RB-R01"
       #
-      # MongoDB 복제 지연     (2단계에서)
-      #   runbook: "RB-M01"
+      # MongoDB 복제 지연
       #
-      # MongoDB 멤버 상태     (2단계에서)
+      # MongoDB 멤버 상태
       #   멤버가 완전히 끊기면 optimeDate 가 1970-01-01 이 되어 위 지연 식의
       #   > 0 필터가 그 멤버를 제외한다. 지연 규칙만으로는 가장 나쁜 상태에서
       #   아무것도 울리지 않으므로 mongodb_members_health 를 짝으로 건다.
-      #   runbook: "RB-M01"
       #
-      # Consumer Lag          (3단계에서)
-      #   runbook: "RB-K01"
+      # Consumer Lag
