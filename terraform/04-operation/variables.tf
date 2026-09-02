@@ -18,14 +18,8 @@ variable "resource_group_name" {
   }
 }
 
-# ── 단계 ─────────────────────────────────────────────────────
-# 이 세션은 서비스 하나를 끝까지 다룬 뒤 다음으로 넘어간다. 그 구간의
-# 서비스 노드만 띄우므로 동시에 존재하는 것은 항상 4대다.
-#
-#   1  ops-1 + redis-1·2·3     관측 기초부터 Redis 대표 장애까지
-#   2  ops-1 + mongo-1·2·3     MongoDB
-#   3  ops-1 + kafka-1·2·3     Kafka
-#   4  ops-1                   런북 정리
+# 이 스택은 세 서비스를 한 번에 올린다. ops-1 과 redis-1·2·3 ·
+# mongo-1·2·3 · kafka-1·2·3 으로 열 대다.
 #
 variable "lab_repo_url" {
   description = "실습 저장소. ops 노드가 부팅할 때 clone 한다. public 이어야 한다."
