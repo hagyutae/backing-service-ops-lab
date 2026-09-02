@@ -18,8 +18,8 @@
 # 나오지 않는다. 그래서 정책을 바꿔 가며 두 번 본다.
 #
 # ── 적재량을 늘리지 않고 상한을 낮춘다 ──────────────────────
-# 롤 기본값이 maxmemory 8gb 다. 그것을 넘기게 채우면 시간이 오래 걸리고
-# 16 GiB 노드에서 fork 여유까지 위협한다. 상한을 내리는 쪽이 빠르고 안전하다.
+# 롤 기본값이 maxmemory 4gb 다. 그것을 넘기게 채우면 시간이 오래 걸리고
+# 8 GiB 노드에서 fork 여유까지 위협한다. 상한을 내리는 쪽이 빠르고 안전하다.
 #
 # ── 반드시 되돌린다 ─────────────────────────────────────────
 # 2단계의 noeviction 을 남겨 두면 이후 실습에서 Redis 쓰기가 계속 거부된다.
@@ -99,7 +99,7 @@ case "${1:-}" in
     # maxmemory=0 policy=noeviction 으로 남았다.
     if [ -z "${ORIG_MAXMEMORY:-}" ] || [ "${ORIG_MAXMEMORY}" = "0" ]; then
       die "기록된 원래 maxmemory 가 비었거나 0 이다. 손으로 되돌린다.
-  ansible redis -m shell -a \"redis-cli CONFIG SET maxmemory 8gb\"
+  ansible redis -m shell -a \"redis-cli CONFIG SET maxmemory 4gb\"
   ansible redis -m shell -a \"redis-cli CONFIG SET maxmemory-policy allkeys-lru\""
     fi
     set_all maxmemory "${ORIG_MAXMEMORY}"

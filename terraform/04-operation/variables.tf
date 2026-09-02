@@ -27,31 +27,6 @@ variable "resource_group_name" {
 #   3  ops-1 + kafka-1·2·3     Kafka
 #   4  ops-1                   런북 정리
 #
-# ── 값을 session.tfvars 에 둔다 ─────────────────────────────
-# 단계를 -var 로만 주면 안 된다. Terraform 의 -var 는 그 실행에만 적용되고
-# state 에 남지 않는다. 다음 apply 에서 값을 다시 주지 않으면 기본값으로
-# 돌아가 앞 단계 노드가 되살아난다.
-#
-# 그래서 session.tfvars 의 stage 를 고쳐 가며 쓴다. 파일에 적힌 값이
-# 곧 지금 단계이므로 무엇이 떠 있어야 하는지가 파일 하나로 드러난다.
-#
-#   session.tfvars 에서 stage = 2 로 고친 뒤
-#   terraform apply -var-file=session.tfvars
-#
-# 변수를 셋으로 두지 않은 이유도 같다. 불리언 셋이면 둘을 켜거나 둘 다 끄는
-# 상태가 만들어지는데, 셋이 같은 사설 IP 를 쓰므로 그때 apply 가 중간에
-# 실패한다. 단계 하나면 그런 상태가 아예 생기지 않는다.
-variable "stage" {
-  description = "1 Redis · 2 MongoDB · 3 Kafka · 4 ops 노드만. session.tfvars 에서 고친다."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = contains([1, 2, 3, 4], var.stage)
-    error_message = "stage 는 1·2·3·4 중 하나여야 한다."
-  }
-}
-
 variable "lab_repo_url" {
   description = "실습 저장소. ops 노드가 부팅할 때 clone 한다. public 이어야 한다."
   type        = string
