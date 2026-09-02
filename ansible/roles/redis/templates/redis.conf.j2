@@ -28,9 +28,9 @@ supervised systemd
 
 ################################### 메모리 ###################################
 
-# 물리 메모리 16 GiB 의 50%.
+# 물리 메모리 8 GiB 의 50%.
 # 나머지 절반은 BGSAVE 와 AOF rewrite 가 fork 할 때 쓰는 여유
-maxmemory 8gb
+maxmemory 4gb
 
 # 실습 시작값. 이후 실습에서 noeviction 과 allkeys-lru 를 번갈아 적용
 maxmemory-policy allkeys-lru

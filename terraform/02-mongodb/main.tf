@@ -8,11 +8,14 @@
 #                           mongosh 와 mongodb-database-tools 도 여기 깐다.
 #                           이 세션의 모든 명령이 이 노드에서 나간다.
 #
-# ── 크기를 E2bds_v5 로 정한 이유 ─────────────────────────────
+# ── 크기를 D2ds_v5 로 정한 이유 ──────────────────────────────
 # MongoDB 는 working set 과 인덱스가 WiredTiger 캐시에 들어가는지가 성능을
 # 가른다. 캐시 기본값이 (물리 메모리 - 1 GiB) x 0.5 라 메모리가 곧 캐시다.
-# 그래서 vCPU 당 메모리가 큰 E 계열을 쓴다. b 는 버스트 가능한 디스크 성능,
-# d 는 로컬 임시 디스크를 뜻한다.
+# 8 GiB 노드에서는 약 3.4 GiB 가 잡히고, 실습 데이터가 20만 건에 storageSize
+# 10.7 MB 라 인덱스를 더해도 캐시에 통째로 들어간다.
+#
+# vCPU 당 메모리가 큰 E 계열이 더 맞지만, 구독의 EBDSv5 패밀리 쿼타가
+# 10 vCPU 라 세션 1 과 세션 2 스택이 겹치면 한도를 넘는다. DDSv5 는 100 이다.
 #
 # ── 디스크를 128 GiB 로 잡은 이유 ────────────────────────────
 # 세션 1 은 64 GiB 였다. oplog 기본 크기가 데이터 디스크 여유 공간의 5% 라
@@ -42,17 +45,15 @@ locals {
 
   # 챕터 12 에서만 만든다.
   #
-  # ── 추가 노드가 mongo 노드와 크기가 다른 이유 ────────────────
-  # mongo-1·mongo-2·mongo-3 은 E2bds_v5 (2 vCPU / 16 GiB) 다. 챕터 03·05·08 이
-  # WiredTiger 캐시와 인덱스를 재는 실습이라 vCPU 당 메모리가 큰 계열이 필요하다.
+  # ── 추가 노드도 mongo 노드와 같은 크기인 이유 ────────────────
+  # mongo-1·mongo-2·mongo-3 도 D2ds_v5 (2 vCPU / 8 GiB) 라 크기가 같다.
   #
-  # 여기서 더하는 여섯 대는 그 실습을 받지 않는다. config server 는 Chunk 위치
+  # 여기서 더하는 여섯 대는 캐시와 인덱스를 재는 실습을 받지 않는다. config server 는 Chunk 위치
   # 메타데이터만 담고, shard2 는 20만 건을 rs0 과 나눠 갖는다. D2ds_v5 의 기본
   # 캐시 3.5 GiB 로도 이 규모는 전부 들어간다.
   #
-  # 크기를 나누면 쿼터가 두 갈래로 흩어진다. 쿼터는 계열별로 걸린다.
-  # EBDSv5 는 mongo 3대로 6, DDSv5 는 ops 1대와 추가 6대로 14 다.
-  # 아홉 대를 전부 E 계열로 올리면 EBDSv5 가 18 이 되어 한도를 넘는다.
+  # 쿼터는 계열별로 걸린다. 열 대를 전부 D2ds_v5 로 두면 DDSv5 가 20 이고
+  # 한도 100 안이다. E 계열이면 EBDSv5 한도 10 을 첫 세 대로 이미 채운다.
   shard_nodes = var.sharding_enabled ? {
     "cfg-1"    = { zone = "1", ip = "10.0.1.8" }
     "cfg-2"    = { zone = "2", ip = "10.0.1.9" }
@@ -128,7 +129,7 @@ module "mongo" {
   resource_group_name  = azurerm_resource_group.this.name
   location             = var.location
   subnet_id            = module.network.subnet_id
-  size                 = "Standard_E2bds_v5"
+  size                 = "Standard_D2ds_v5"
   zone                 = each.value.zone
   private_ip           = each.value.ip
   data_disk_gb         = 128

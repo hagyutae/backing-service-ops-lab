@@ -7,11 +7,16 @@
 # ops-1     : Ansible 을 돌리고 Prometheus·Grafana 를 올린다.
 #             관측 도구가 관측 대상과 함께 죽으면 장애 실습이 성립하지 않는다.
 #
-# ── 크기를 E2ds_v5 로 정한 이유 ──────────────────────────────
+# ── 크기를 D2ds_v5 로 정한 이유 ──────────────────────────────
 # Redis 는 명령을 단일 스레드로 처리한다. vCPU 를 늘려도 처리량이 비례하지
 # 않으므로 코어보다 메모리가 중요하다. BGSAVE 와 AOF rewrite 가 fork 하고
 # Copy-on-Write 로 메모리가 최대 2배까지 늘 수 있어 maxmemory 를 물리의 50%
-# 로 잡는다. 그래서 vCPU 당 메모리가 큰 E 계열을 쓴다.
+# 인 4 GiB 로 잡는다.
+#
+# vCPU 당 메모리가 큰 E 계열이 더 맞지만, 구독의 EBDSv5 패밀리 쿼타가
+# 10 vCPU 라 세션 1 과 세션 2 스택이 겹치면 한도를 넘는다. DDSv5 는 100 이다.
+# 실습이 채우는 양은 fill.sh 300 MB 와 Eviction 실습의 256 MB 한도뿐이라
+# 4 GiB 한도로도 모든 실습이 성립한다.
 #
 # ── 사설 IP 를 고정하는 이유 ─────────────────────────────────
 # 인벤토리를 이 코드가 채워 ops 노드에 배치한다. 동적 할당이면 apply 전에
@@ -89,7 +94,7 @@ module "redis" {
   resource_group_name  = azurerm_resource_group.this.name
   location             = var.location
   subnet_id            = module.network.subnet_id
-  size                 = "Standard_E2bds_v5"
+  size                 = "Standard_D2ds_v5"
   zone                 = each.value.zone
   private_ip           = each.value.ip
   data_disk_gb         = 64
