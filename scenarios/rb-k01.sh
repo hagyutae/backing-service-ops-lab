@@ -43,7 +43,7 @@ export ANSIBLE_CONFIG="${ANSIBLE_CONFIG:-$HOME/ansible/ansible.cfg}"
 INV="${INV:-$HOME/ansible/inventory/hosts.ini}"
 TOPIC="${TOPIC:-lab.events}"
 PARTITIONS="${PARTITIONS:-3}"
-GROUP="${GROUP:-lab-cg}"
+GROUP="${GROUP:-ops-cg}"
 CONSUMERS="${CONSUMERS:-3}"
 POLL_MS="${POLL_MS:-20000}"       # max.poll.interval.ms.
 # 5000 으로 두면 Rebalance 가 너무 잦아 kafka-consumer-groups.sh --describe 가
