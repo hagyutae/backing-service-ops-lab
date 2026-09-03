@@ -132,6 +132,11 @@ module "redis" {
   source   = "../modules/node"
   for_each = local.redis_nodes
 
+  # ops 뒤로 순서를 강제한다. 열 대의 데이터 디스크 연결이 한꺼번에
+  # Azure 로 나가면 같은 VM 에 대한 동시 쓰기로 409 가 난다. 서비스 단위로
+  # 세 물결로 나눠 동시 연결 수를 최대 3대로 줄인다.
+  depends_on = [module.ops]
+
   name                 = each.key
   resource_group_name  = azurerm_resource_group.this.name
   location             = var.location
@@ -150,6 +155,8 @@ module "mongo" {
   source   = "../modules/node"
   for_each = local.mongo_nodes
 
+  depends_on = [module.redis]
+
   name                 = each.key
   resource_group_name  = azurerm_resource_group.this.name
   location             = var.location
@@ -167,6 +174,8 @@ module "mongo" {
 module "kafka" {
   source   = "../modules/node"
   for_each = local.kafka_nodes
+
+  depends_on = [module.mongo]
 
   name                 = each.key
   resource_group_name  = azurerm_resource_group.this.name
